@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS agent_configs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   prompt TEXT NOT NULL,
+  scenario_type TEXT DEFAULT 'general',
   voice_settings JSONB DEFAULT '{}',
   emergency_phrases TEXT[] DEFAULT '{}',
   structured_fields JSONB DEFAULT '[]',
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS call_results (
   call_request JSONB NOT NULL,
   transcript TEXT DEFAULT '',
   summary JSONB DEFAULT '{}',
+  conversation_state JSONB DEFAULT '{}',
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   duration INTEGER DEFAULT 0
 );
@@ -35,25 +37,35 @@ INSERT INTO agent_configs (
   id, 
   name, 
   prompt, 
+  scenario_type,
   voice_settings, 
   emergency_phrases, 
   structured_fields
 ) VALUES (
   'default-logistics-agent',
-  'Logistics Dispatch Agent',
-  'You are a professional dispatcher calling truck drivers for status updates. Start with a friendly greeting, ask about their current status, location, and ETA. Handle emergencies immediately by asking about safety and location. Be concise and professional.',
+  'General Logistics Dispatcher',
+  'You are a professional logistics dispatcher calling truck drivers for status updates. You handle both routine check-ins and emergency situations with equal professionalism. For normal calls, ask about status, location, and ETA. For emergencies, immediately ask about safety, location, and what happened, then escalate to human dispatcher.',
+  'general',
   '{"voice_id": "11labs-Adrian", "speed": 1.0, "temperature": 0.7, "backchanneling": true, "filler_words": true, "interruption_sensitivity": "medium"}',
-  '{"emergency", "accident", "breakdown", "medical", "help", "urgent"}',
+  '{"emergency", "accident", "breakdown", "medical", "help", "urgent", "blowout", "crash", "collision", "injury", "hurt", "stuck", "disabled"}',
   '[
     {"key": "call_outcome", "label": "Call Outcome", "type": "select", "options": ["In-Transit Update", "Arrival Confirmation", "Emergency Escalation"]},
     {"key": "driver_status", "label": "Driver Status", "type": "select", "options": ["Driving", "Delayed", "Arrived", "Unloading"]},
     {"key": "current_location", "label": "Current Location", "type": "text"},
     {"key": "eta", "label": "ETA", "type": "text"},
-    {"key": "delay_reason", "label": "Delay Reason", "type": "select", "options": ["Heavy Traffic", "Weather", "Mechanical", "Loading/Unloading", "None"]},
+    {"key": "delay_reason", "label": "Delay Reason", "type": "select", "options": ["Heavy Traffic", "Weather", "Mechanical", "Loading/Unloading", "Fuel", "DOT/Legal", "Other", "None"]},
     {"key": "unloading_status", "label": "Unloading Status", "type": "select", "options": ["In Door", "Waiting for Lumper", "Detention", "N/A"]},
-    {"key": "pod_reminder_acknowledged", "label": "POD Reminder", "type": "boolean"}
+    {"key": "pod_reminder_acknowledged", "label": "POD Reminder", "type": "boolean"},
+    {"key": "emergency_type", "label": "Emergency Type", "type": "select", "options": ["Accident", "Breakdown", "Medical", "Other"]},
+    {"key": "safety_status", "label": "Safety Status", "type": "text"},
+    {"key": "injury_status", "label": "Injury Status", "type": "text"},
+    {"key": "emergency_location", "label": "Emergency Location", "type": "text"},
+    {"key": "load_secure", "label": "Load Secure", "type": "boolean"},
+    {"key": "escalation_status", "label": "Escalation Status", "type": "text"}
   ]'
-) ON CONFLICT (id) DO NOTHING;
+) ON CONFLICT (id) DO UPDATE SET
+  scenario_type = 'general',
+  updated_at = NOW();
 
 -- Verify tables were created
 SELECT 'Tables created successfully!' as status;

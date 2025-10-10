@@ -1,22 +1,155 @@
 
 
-# Voice Agent Tool 🎯
+# AI Voice Agent Tool - Logistics Dispatcher
 
-A full-stack voice agent system with a FastAPI backend and a modern React frontend. Designed for managing driver calls, integrating with Supabase, and providing a seamless dashboard experience.
+A comprehensive web application for configuring, testing, and analyzing AI voice agents specialized in logistics dispatch operations. This tool allows non-technical administrators to configure adaptive AI voice agents that handle truck driver check-ins and emergency situations with professional, human-like conversations.
 
----
+## 🚀 Features
 
-## � Contents
+### Core Functionality
+- **Agent Configuration UI**: Intuitive interface to define conversation prompts and voice settings
+- **Call Triggering System**: Ability to initiate both web and phone calls with driver context
+- **Real-time Call Management**: Live call monitoring with transcript display
+- **Structured Data Extraction**: Automatic extraction of key information into structured summaries
+- **Emergency Protocol Handling**: Immediate detection and response to emergency situations
 
-- [Backend (FastAPI)](#backend-fastapi)
-- [Frontend (React + Vite)](#frontend-react--vite)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Quickstart](#quickstart)
-- [API Documentation](#api-documentation)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
-- [Environment Variables](#environment-variables)
+### Logistics-Specific Scenarios
+
+#### Scenario 1: End-to-End Driver Check-in
+- Dynamic conversation flow that adapts based on driver responses
+- Handles three main driver states: Driving, Arrived, Delayed
+- Extracts structured data: location, ETA, delay reasons, unloading status
+- Professional conversation management with natural backchanneling
+
+#### Scenario 2: Emergency Protocol
+- Immediate emergency detection using trigger phrases
+- Priority-based response: Safety → Location → Details → Escalation
+- Structured emergency data collection
+- Automatic escalation to human dispatchers
+
+### Advanced Voice Configuration
+- **Optimal Voice Settings**: Configured for human-like interactions
+- **Backchanneling**: Natural "uh-huh", "okay" responses
+- **Filler Words**: Natural speech patterns
+- **Interruption Sensitivity**: Configurable response to speaker interruptions
+- **Dynamic Response Generation**: Context-aware conversation management
+
+## 🛠 Technology Stack
+
+- **Frontend**: React + TypeScript + Tailwind CSS
+- **Backend**: FastAPI + Python
+- **Database**: Supabase (PostgreSQL)
+- **Voice System**: Retell AI
+- **Deployment**: Ready for production deployment
+
+## 📋 Project Requirements Fulfillment
+
+### Core Requirements ✅
+- ✅ Agent Configuration UI with prompt and logic definition
+- ✅ Call triggering with driver name, phone number, and load number inputs
+- ✅ Structured results display with key-value pairs alongside full transcripts
+- ✅ Backend webhook handling for real-time conversation management
+- ✅ Post-processing for structured data extraction
+
+### Logistics Scenarios ✅
+
+#### Task A: Optimal Voice Configuration ✅
+- ✅ Implemented backchanneling, filler words, and interruption sensitivity
+- ✅ Human-like conversation patterns with natural speech flow
+- ✅ Professional yet friendly tone throughout interactions
+
+#### Scenario 1: Driver Check-in ✅
+- ✅ End-to-end conversation handling with dynamic branching
+- ✅ Open-ended status inquiry with adaptive follow-up questions
+- ✅ Structured data extraction for all required fields:
+  - `call_outcome`: "In-Transit Update" OR "Arrival Confirmation"
+  - `driver_status`: "Driving" OR "Delayed" OR "Arrived" OR "Unloading"
+  - `current_location`: Highway, mile markers, city information
+  - `eta`: Estimated arrival times
+  - `delay_reason`: Traffic, Weather, Mechanical, etc.
+  - `unloading_status`: Dock assignments, door numbers, detention
+  - `pod_reminder_acknowledged`: Proof of delivery reminders
+
+#### Scenario 2: Emergency Protocol ✅
+- ✅ Immediate emergency detection and protocol switch
+- ✅ Priority-based information gathering (Safety → Location → Details)
+- ✅ Structured emergency data extraction:
+  - `call_outcome`: "Emergency Escalation"
+  - `emergency_type`: "Accident" OR "Breakdown" OR "Medical" OR "Other"
+  - `safety_status`: Confirmed safety information
+  - `injury_status`: Injury assessment
+  - `emergency_location`: Exact highway position
+  - `load_secure`: Cargo security status
+  - `escalation_status`: "Connected to Human Dispatcher"
+
+#### Task B: Dynamic Response Handling ✅
+- ✅ **Uncooperative Driver Handling**: Probes 2-3 times, then graceful call termination
+- ✅ **Noisy Environment Management**: Asks for repetition with limited attempts
+- ✅ **Conflicting Information**: Non-confrontational handling of discrepancies
+
+## 🏗 Architecture & Design Choices
+
+### Backend Architecture
+```
+backend/
+├── app/
+│   ├── core/           # Configuration and settings
+│   ├── database/       # Supabase client and database operations
+│   ├── models/         # Pydantic schemas and data models
+│   ├── routes/         # API endpoints (agents, calls, webhooks)
+│   └── services/       # Business logic (Retell integration, prompt templates)
+├── main.py            # FastAPI application entry point
+└── database_setup.sql # Database schema and initial data
+```
+
+### Frontend Architecture
+```
+frontend/src/
+├── components/        # React components
+│   ├── AgentConfiguration.tsx  # Agent setup and scenario selection
+│   ├── CallInterface.tsx       # Call management and live monitoring
+│   └── CallResults.tsx         # Results display and data analysis
+├── hooks/             # Custom React hooks (Retell integration)
+├── types/             # TypeScript interfaces
+└── utils/             # API client and utilities
+```
+
+### Key Design Decisions
+
+#### 1. Modular Prompt Templates
+Created `LogisticsPromptTemplates` service with predefined scenarios:
+- **Driver Check-in**: Optimized for routine status updates
+- **Emergency Protocol**: Specialized for crisis response
+- **General**: Hybrid approach handling both scenarios
+
+#### 2. Enhanced Conversation State Management
+Implemented sophisticated state tracking:
+- **Phase-based progression**: greeting → inquiry → follow-up → wrap-up
+- **Emergency state override**: Immediate protocol switch when triggered
+- **Clarification handling**: Manages unclear responses with retry logic
+- **Uncooperative driver detection**: Identifies and handles minimal responses
+
+#### 3. Advanced Data Extraction
+Built comprehensive extraction logic:
+- **Location parsing**: Supports highways, mile markers, cities, exits
+- **Time extraction**: ETA patterns including relative and absolute times
+- **Emergency categorization**: Automatic classification of emergency types
+- **Confidence scoring**: Emergency detection with confidence levels
+
+#### 4. Human-like Voice Configuration
+Optimized settings for natural conversations:
+```python
+OPTIMAL_VOICE_SETTINGS = {
+    "voice_id": "11labs-Adrian",
+    "speed": 1.0,
+    "temperature": 0.7,
+    "backchanneling": True,
+    "filler_words": True,
+    "interruption_sensitivity": "medium",
+    "response_delay": 0.3,
+    "enable_interruption": True
+}
+```
 
 
 
@@ -89,9 +222,10 @@ voice-agent-tool/
 ## 🚀 Quickstart
 
 ### 1. Clone the Repository
-
-
-
+```
+git clone https://github.com/sampson169/AI-Voice-Agent-Tool.git
+```
+---
 
 
 # Voice Agent Tool
@@ -229,14 +363,12 @@ voice-agent-tool/
 Create a `.env` file in the `backend/` directory with the following variables:
 
 ```env
-SUPABASE_URL=your-supabase-url
-SUPABASE_KEY=your-supabase-key
-RETELL_API_KEY=your-retell-api-key (optional)
-LOG_LEVEL=INFO
-HOST=localhost
 PORT=8000
-RELOAD=True
-ALLOWED_ORIGINS=["http://localhost:3000", "http://127.0.0.1:3000"]
+SUPABASE_URL=
+SUPABASE_KEY=
+RETELL_API_KEY=
+RETELL_AGENT_ID=
+RETELL_WEBHOOK_URL=https://0ae6ed66482a.ngrok-free.app/api/webhook/retell
 ```
 
 > **Note:** Replace placeholder values with your actual credentials.
@@ -608,6 +740,3 @@ npm run dev
 ---
 
 ---
-
-
-**Happy coding!** 💻✨

@@ -53,7 +53,6 @@ const CallResults: React.FC<CallResultsProps> = ({ callResult, onNewCall, onBack
           </div>
         </div>
 
-        {/* Call Metadata */}
         <div className="grid grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
           <div>
             <label className="text-sm font-medium text-gray-500">Driver</label>

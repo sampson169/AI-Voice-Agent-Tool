@@ -55,12 +55,11 @@ class SupabaseClient:
         except Exception as e:
             error_msg = str(e).lower()            
             if "does not exist" in error_msg or "relation" in error_msg or "not found" in error_msg:
-                print("✅ Supabase connected (tables need to be created)")
                 return True
             
             if "unauthorized" in error_msg or "forbidden" in error_msg or "invalid" in error_msg:
                 return False
-                
+            
             return True
 
 supabase_client = SupabaseClient()

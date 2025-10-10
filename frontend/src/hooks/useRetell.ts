@@ -16,18 +16,15 @@ export const useRetell = () => {
       const client = new RetellWebClient();
       
       client.on('conversationStarted', () => {
-        console.log('Conversation started');
         setIsConnected(true);
         setIsLoading(false);
       });
 
-      client.on('conversationEnded', ({ code, reason }) => {
-        console.log('Conversation ended:', code, reason);
+      client.on('conversationEnded', () => {
         setIsConnected(false);
       });
 
       client.on('error', (error) => {
-        console.error('Retell client error:', error);
         setError(`Connection error: ${error.message || 'Unknown error'}`);
         setIsConnected(false);
         setIsLoading(false);
@@ -42,21 +39,20 @@ export const useRetell = () => {
         }
       });
 
-      client.on('metadata', (metadata) => {
-        console.log('Call metadata:', metadata);
+      client.on('metadata', () => {
+        // Handle metadata if needed
       });
       
       clientRef.current = client;
       setIsLoading(false);
       
     } catch (error: any) {
-      console.error('Failed to initialize Retell client:', error);
       setError(`Initialization failed: ${error.message || 'Unknown error'}`);
       setIsLoading(false);
     }
   };
 
-  const startCall = async (accessToken: string, callId?: string) => {
+  const startCall = async (accessToken: string) => {
     try {
       setError(null);
       
@@ -76,7 +72,6 @@ export const useRetell = () => {
       });
 
     } catch (error: any) {
-      console.error('Failed to start call:', error);
       setError(`Failed to start call: ${error.message || 'Unknown error'}`);
       setIsConnected(false);
       setIsLoading(false);
@@ -89,7 +84,7 @@ export const useRetell = () => {
       setIsConnected(false);
       setError(null);
     } catch (error: any) {
-      console.error('Error ending call:', error);
+      // Error ending call
     }
   };
 
@@ -99,7 +94,7 @@ export const useRetell = () => {
         try {
           clientRef.current.stopCall();
         } catch (error) {
-          console.error('Error cleaning up Retell client:', error);
+          // Error cleaning up client
         }
       }
     };

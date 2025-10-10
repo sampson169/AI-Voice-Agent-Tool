@@ -12,18 +12,44 @@ async def start_call(call_request: CallRequest):
     try:
         call_id = str(uuid.uuid4())
         
+        # Get or create agent configuration
         from app.core.config import settings
         if not call_request.agent_id or call_request.agent_id in ['default', 'default-logistics-agent']:
-            call_request.agent_id = settings.retell_agent_id or 'agent_b4902d2c6973a595dc4cf5ad55'
+            # Use default logistics agent
+            call_request.agent_id = 'default-logistics-agent'
+            
+            # Ensure default agent exists in database
+            existing_agent = await supabase_client.get_agent_config('default-logistics-agent')
+            if not existing_agent:
+                from app.services.prompt_templates import LogisticsPromptTemplates
+                template = LogisticsPromptTemplates.get_scenario_template("general")
+                
+                default_agent = {
+                    "id": "default-logistics-agent",
+                    "name": template["name"],
+                    "prompt": template["prompt"],
+                    "scenario_type": "general",
+                    "voice_settings": template["voice_settings"],
+                    "emergency_phrases": template["emergency_phrases"],
+                    "structured_fields": template["structured_fields"],
+                    "created_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+                await supabase_client.create_agent_config(default_agent)
+            
+            retell_agent_id = settings.retell_agent_id or 'agent_fa51b58953a177984c9e173910'
+        else:
+            retell_agent_id = settings.retell_agent_id or call_request.agent_id
         
-        print(f"🎯 Starting {call_request.call_type} call with agent_id: {call_request.agent_id}")
+        original_agent_id = call_request.agent_id
+        call_request.agent_id = retell_agent_id
         
         if call_request.call_type == "phone":
             retell_response = await retell_service.create_phone_call(call_request)
         else:
             retell_response = await retell_service.create_web_call(call_request)
         
-        print(f"📞 Retell response: {retell_response}")
+        call_request.agent_id = original_agent_id
         
         if retell_response and "error" not in retell_response:
             retell_call_id = retell_response.get("call_id", call_id)
@@ -34,6 +60,12 @@ async def start_call(call_request: CallRequest):
                 "call_request": call_request.dict(),
                 "transcript": "",
                 "summary": {},
+                "conversation_state": {
+                    "phase": "greeting",
+                    "emergency_detected": False,
+                    "clarification_attempts": 0,
+                    "scenario_type": "general"
+                },
                 "timestamp": datetime.utcnow().isoformat(),
                 "duration": 0
             }
@@ -48,19 +80,16 @@ async def start_call(call_request: CallRequest):
                 "access_token": retell_response.get("access_token")
             }
             
-            print(f"✅ Call started successfully: {response}")
             return response
         else:
             error_msg = retell_response.get("error", "Unknown error") if retell_response else "Failed to create call"
             error_details = retell_response.get("details", "") if retell_response else ""
             full_error = f"{error_msg}. Details: {error_details}" if error_details else error_msg
-            print(f"❌ Call start failed: {full_error}")
             raise HTTPException(status_code=500, detail=full_error)
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Unexpected error starting call: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error starting call: {str(e)}")
 
 @router.get("/{call_id}/result", response_model=CallResult)

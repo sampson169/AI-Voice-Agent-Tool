@@ -29,11 +29,9 @@ class CallProcessingService:
         
         transcript_lower = transcript.lower()
         
-        # Check for emergency first
         if self._is_emergency(transcript_lower):
             return self._process_emergency(transcript)
         
-        # Process normal call
         return self._process_normal_call(transcript)
 
     def _is_emergency(self, transcript: str) -> bool:
@@ -47,7 +45,6 @@ class CallProcessingService:
             escalation_status="Connected to Human Dispatcher"
         )
         
-        # Extract emergency type
         if "accident" in transcript.lower() or "crash" in transcript.lower():
             summary.emergency_type = "Accident"
         elif "breakdown" in transcript.lower() or "blowout" in transcript.lower():
@@ -57,16 +54,13 @@ class CallProcessingService:
         else:
             summary.emergency_type = "Other"
         
-        # Extract safety information
         if "safe" in transcript.lower() or "ok" in transcript.lower():
             summary.safety_status = "Driver confirmed everyone is safe"
         if "injured" not in transcript.lower() or "no injury" in transcript.lower():
             summary.injury_status = "No injuries reported"
         
-        # Extract location
         summary.emergency_location = self._extract_location(transcript)
         
-        # Check load security
         if "secure" in transcript.lower() or "fine" in transcript.lower():
             summary.load_secure = True
         
@@ -76,7 +70,6 @@ class CallProcessingService:
         """Process normal check-in call"""
         summary = CallSummary()
         
-        # Determine call outcome
         if any(word in transcript.lower() for word in ["arrived", "delivered", "at destination"]):
             summary.call_outcome = "Arrival Confirmation"
             summary.driver_status = "Arrived"
@@ -89,19 +82,14 @@ class CallProcessingService:
             else:
                 summary.driver_status = "Driving"
         
-        # Extract location
         summary.current_location = self._extract_location(transcript)
         
-        # Extract ETA
         summary.eta = self._extract_eta(transcript)
         
-        # Extract delay reason
         summary.delay_reason = self._extract_delay_reason(transcript)
         
-        # Extract unloading status
         summary.unloading_status = self._extract_unloading_status(transcript)
         
-        # Check POD reminder
         summary.pod_reminder_acknowledged = "pod" in transcript.lower() or "proof" in transcript.lower()
         
         return summary
@@ -151,5 +139,4 @@ class CallProcessingService:
                 return "Unloading"
         return "N/A"
 
-# Initialize call processing service
 call_processor = CallProcessingService()

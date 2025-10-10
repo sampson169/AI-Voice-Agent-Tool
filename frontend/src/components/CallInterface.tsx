@@ -17,7 +17,7 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
     driverName: '',
     phoneNumber: '',
     loadNumber: '',
-    agentId: agentConfig.id || 'agent_b4902d2c6973a595dc4cf5ad55',
+    agentId: agentConfig.id || 'agent_fa51b58953a177984c9e173910',
     callType: 'web',
   });
   const { isConnected, transcript, error: retellError, startCall: startRetellCall, endCall: endRetellCall, setTranscript } = useRetell();
@@ -29,7 +29,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
     }
 
     try {
-      // Immediately transition to call interface
       setIsCallInProgress(true);
       
       if (callData.callType === 'web') {
@@ -39,16 +38,14 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
       const response = await api.startCall(callData);
       
       if (response.access_token) {
-        await startRetellCall(response.access_token, response.call_id);
+        await startRetellCall(response.access_token);
       } else {
-        console.warn('No access token received, falling back to simulation');
         simulateCall();
       }
       
     } catch (error: any) {
-      console.error('Failed to start call:', error);
       alert(`Failed to start call: ${error.message || 'Unknown error'}. Please check your configuration and try again.`);
-      setIsCallInProgress(false); // Reset state on error
+      setIsCallInProgress(false);
     }
   };
 
@@ -144,11 +141,9 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
     endRetellCall();
     setIsCallInProgress(false);
     
-    // Generate summary based on transcript content
     const generateSummary = (transcript: string) => {
       const lowerTranscript = transcript.toLowerCase();
       
-      // Check for emergency
       if (lowerTranscript.includes('emergency') || lowerTranscript.includes('blowout') || 
           lowerTranscript.includes('accident') || lowerTranscript.includes('breakdown')) {
         return {
@@ -168,7 +163,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
         };
       }
       
-      // Check for delays
       else if (lowerTranscript.includes('late') || lowerTranscript.includes('delay') || 
                lowerTranscript.includes('traffic') || lowerTranscript.includes('construction')) {
         return {
@@ -183,7 +177,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
         };
       }
       
-      // Check for arrival
       else if (lowerTranscript.includes('arrived') || lowerTranscript.includes('here') || 
                lowerTranscript.includes('dock') || lowerTranscript.includes('unloading')) {
         return {
@@ -198,7 +191,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
         };
       }
       
-      // Normal driving status
       else {
         return {
           call_outcome: 'In-Transit Update',
@@ -223,7 +215,7 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
       transcript,
       summary: generateSummary(transcript),
       timestamp: new Date().toISOString(),
-      duration: Math.floor((Date.now() - (Date.now() - 45000)) / 1000), // Approximate duration
+      duration: Math.floor((Date.now() - (Date.now() - 45000)) / 1000),
     };
     
     onCallEnd(result);
@@ -299,7 +291,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
               </p>
             </div>
 
-            {/* Test Scenario Options */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="font-medium text-blue-900 mb-3">Test Scenarios (for demonstration)</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -330,7 +321,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
               </p>
             </div>
 
-            {/* Error Display */}
             {retellError && (
               <div className="bg-red-50 border border-red-200 rounded-md p-4">
                 <div className="flex">
@@ -364,7 +354,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Call in progress */}
             <div className="text-center py-8">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
                 <Phone className="h-8 w-8 text-green-600 animate-pulse" />
@@ -385,7 +374,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
               )}
             </div>
 
-            {/* Call Controls */}
             <div className="flex justify-center space-x-4">
               <button
                 onClick={() => setIsMuted(!isMuted)}
@@ -411,7 +399,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
               </button>
             </div>
 
-            {/* Connection Status */}
             {retellError && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
                 <div className="flex">
@@ -426,7 +413,6 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
               </div>
             )}
 
-            {/* Live Transcript */}
             <div className="border rounded-lg p-4 bg-gray-50">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="font-medium text-gray-900">Live Transcript</h4>

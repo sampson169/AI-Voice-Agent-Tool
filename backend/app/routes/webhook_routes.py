@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, WebSocket, WebSocketDisconnect
 from app.database.supabase import supabase_client
 from app.models.schemas import RetellWebhook
 import json
@@ -7,42 +7,217 @@ from typing import Dict, Any
 
 router = APIRouter(prefix="/api/webhook", tags=["webhook"])
 
+@router.get("/test")
+async def test_webhook():
+    """Test endpoint to verify webhook is accessible"""
+    return {"status": "ok", "message": "Webhook endpoint is accessible"}
+
+@router.websocket("/retell/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for Retell AI - general"""
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive_json()
+            
+            call_id = message.get("call_id")
+            if call_id:
+                response = await process_websocket_message(message, call_id)
+                if response is not None:
+                    await websocket.send_text(json.dumps(response))
+                
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        await websocket.close()
+
+@router.websocket("/retell/ws/{call_id}")
+async def websocket_call_endpoint(websocket: WebSocket, call_id: str):
+    """WebSocket endpoint for Retell AI - specific call"""
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive_json()
+            
+            response = await process_websocket_message(message, call_id)
+            if response is not None:
+                await websocket.send_text(json.dumps(response))
+            
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        await websocket.close()
+
+@router.websocket("/retell/{call_id}")  
+async def websocket_retell_endpoint(websocket: WebSocket, call_id: str):
+    """Alternative WebSocket endpoint for Retell AI"""
+    await websocket.accept()
+    try:
+        while True:
+            message = await websocket.receive_json()
+            
+            response = await process_websocket_message(message, call_id)
+            if response is not None:
+                await websocket.send_text(json.dumps(response))
+            
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        await websocket.close()
+
 @router.post("/retell")
 async def handle_retell_webhook(request: Request):
     try:
         webhook_data = await request.json()
+        
         response = await process_retell_webhook(webhook_data)
         return response
         
     except Exception as e:
+        fallback_response = {
+            "response": "I apologize for the technical difficulty. This is Dispatch calling for a status update. Can you please tell me your current location?",
+            "response_id": 1,
+            "end_call": False
+        }
+        return fallback_response
+
+async def process_websocket_message(message: dict, call_id: str) -> dict:
+    """Process WebSocket message from Retell and generate appropriate response"""
+    try:
+        message_type = message.get("type") or message.get("interaction_type")
+        
+        if message_type == "response_required":
+            transcript_array = message.get("transcript", [])
+            
+            full_transcript = ""
+            last_user_utterance = ""
+            
+            for item in transcript_array:
+                role = item.get("role", "")
+                content = item.get("content", "")
+                if role == "user":
+                    full_transcript += f"User: {content}\n"
+                    last_user_utterance = content
+                elif role == "agent":
+                    full_transcript += f"Agent: {content}\n"
+            
+            call_data = await supabase_client.get_call_result(call_id)
+            if not call_data:
+                retell_vars = message.get("retell_llm_dynamic_variables", {})
+                driver_name = retell_vars.get("driver_name", "Driver")
+                load_number = retell_vars.get("load_number", "Load")
+                
+                call_data = {
+                    "id": call_id,
+                    "call_request": {
+                        "driverName": driver_name,
+                        "loadNumber": load_number,
+                        "agentId": "agent_fa51b58953a177984c9e173910"
+                    },
+                    "conversation_state": {
+                        "phase": "greeting",
+                        "emergency_detected": False,
+                        "clarification_attempts": 0,
+                        "scenario_type": "general"
+                    },
+                    "transcript": full_transcript,
+                    "summary": {}
+                }
+                
+                await supabase_client.create_call_result(call_data)
+            
+            response_data = await process_retell_webhook({
+                "call_id": call_id,
+                "transcript": full_transcript,
+                "last_user_utterance": last_user_utterance
+            })
+            
+            websocket_response = {
+                "response_id": message.get("response_id", 1),
+                "content": response_data.get("response", ""),
+                "content_complete": True,
+                "end_call": response_data.get("end_call", False)
+            }
+            
+            return websocket_response
+            
+        elif message_type == "ping":
+            return {"type": "pong"}
+            
+        elif message_type in ["update_only"]:
+            return None
+            
+        else:
+            return None
+            
+    except Exception as e:
         return {
-            "response": "I apologize, I didn't understand that. Could you please repeat?",
-            "response_id": 1
+            "response_id": 1,
+            "content": "I apologize for the technical difficulty. This is Dispatch calling for a status update. Can you tell me your current location?",
+            "content_complete": True,
+            "end_call": False
         }
 
 async def process_retell_webhook(webhook_data: dict) -> dict:
     call_id = webhook_data.get("call_id")
+    if not call_id and "call" in webhook_data:
+        call_id = webhook_data["call"].get("call_id")
+    
     transcript = webhook_data.get("transcript", "")
     current_utterance = webhook_data.get("last_user_utterance", "").lower()
+    
+    event_type = webhook_data.get("event")
+    if event_type:
+        
+        if event_type == "call_started":
+            call_info = webhook_data.get("call", {})
+            retell_vars = call_info.get("retell_llm_dynamic_variables", {})
+            
+            if retell_vars:
+                call_data = await supabase_client.get_call_result(call_id)
+                if call_data:
+                    call_data["call_request"]["driverName"] = retell_vars.get("driver_name", "Driver")
+                    call_data["call_request"]["loadNumber"] = retell_vars.get("load_number", "Load")
+                    await supabase_client.update_call_result(call_id, call_data)
+                else:
+                    call_data = {
+                        "id": call_id,
+                        "call_request": {
+                            "driverName": retell_vars.get("driver_name", "Driver"),
+                            "loadNumber": retell_vars.get("load_number", "Load"),
+                            "agentId": "agent_fa51b58953a177984c9e173910"
+                        },
+                        "conversation_state": {
+                            "phase": "greeting",
+                            "emergency_detected": False,
+                            "clarification_attempts": 0,
+                            "scenario_type": "general"
+                        },
+                        "transcript": "",
+                        "summary": {}
+                    }
+                    await supabase_client.create_call_result(call_data)
+        
+        if event_type in ["call_started", "call_ended", "call_analyzed"]:
+            return {
+                "response": "Event received",
+                "response_id": 1,
+                "end_call": event_type == "call_ended" or event_type == "call_analyzed"
+            }
     
     call_data = await supabase_client.get_call_result(call_id)
     if not call_data:
         return default_response()
     
-    # Extract conversation context
     call_request = call_data.get("call_request", {})
     conversation_state = call_data.get("conversation_state", {"phase": "greeting", "emergency_detected": False})
-    
-    # Check for emergency triggers first (highest priority)
     emergency_detected = detect_emergency(current_utterance, transcript)
     if emergency_detected and not conversation_state.get("emergency_detected", False):
         conversation_state["emergency_detected"] = True
         conversation_state["phase"] = "emergency"
     
-    # Extract and update structured data
     summary = extract_structured_data(transcript, call_request, conversation_state)
     
-    # Update conversation state based on responses
     conversation_state = update_conversation_state(current_utterance, transcript, conversation_state, summary)
     
     updated_data = {

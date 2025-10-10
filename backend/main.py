@@ -50,7 +50,6 @@ async def read_root():
 @app.post("/")
 async def post_root(request: Request):
     """Handle POST requests to root (webhooks, health checks, etc.)"""
-    # Log the request details for debugging
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
     
