@@ -7,8 +7,63 @@ export const useRetell = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [callDuration, setCallDuration] = useState(0);
   const clientRef = useRef<RetellWebClient | null>(null);
   const isInitializedRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+  const callStartTimeRef = useRef<number | null>(null);
+  const connectionTimeoutRef = useRef<number | null>(null);
+
+  const startTimer = useCallback(() => {
+    if (timerRef.current) {
+      return;
+    }
+    
+    callStartTimeRef.current = Date.now();
+    setCallDuration(0);
+    
+    timerRef.current = window.setInterval(() => {
+      if (callStartTimeRef.current) {
+        const elapsed = Math.floor((Date.now() - callStartTimeRef.current) / 1000);
+        setCallDuration(elapsed);
+      }
+    }, 1000);
+  }, []);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    callStartTimeRef.current = null;
+  }, []);
+
+  const clearConnectionTimeout = useCallback(() => {
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleConnected = useCallback(() => {
+    if (!isConnected) {
+      setIsConnected(true);
+      setIsLoading(false);
+      setError(null);
+      startTimer();
+      clearConnectionTimeout();
+    }
+  }, [isConnected, isLoading, startTimer, clearConnectionTimeout]);
+
+  const resetCall = useCallback(() => {
+    setTranscript('');
+    setCallDuration(0);
+    setError(null);
+    setIsConnected(false);
+    setIsLoading(false);
+    stopTimer();
+    clearConnectionTimeout();
+  }, [stopTimer, clearConnectionTimeout]);
 
   const cleanupClient = useCallback(() => {
     if (clientRef.current) {
@@ -17,9 +72,7 @@ export const useRetell = () => {
         clientRef.current = null;
         isInitializedRef.current = false;
       } catch (error) {
-        if (isDebugMode()) {
-          console.warn('Error during client cleanup:', error);
-        }
+        
       }
     }
   }, []);
@@ -35,14 +88,30 @@ export const useRetell = () => {
       const client = new RetellWebClient();
       
       client.on('conversationStarted', () => {
-        setIsConnected(true);
-        setIsLoading(false);
-        setError(null);
+        handleConnected();
       });
 
       client.on('conversationEnded', () => {
         setIsConnected(false);
         setIsLoading(false);
+        stopTimer();
+        clearConnectionTimeout();
+      });
+
+      client.on('call_started', () => {
+        handleConnected();
+      });
+
+      client.on('agent_start_talking', () => {
+        handleConnected();
+      });
+
+      client.on('call_connected', () => {
+        handleConnected();
+      });
+
+      client.on('room_connected', () => {
+        handleConnected();
       });
 
       client.on('error', (error) => {
@@ -50,13 +119,28 @@ export const useRetell = () => {
         if (isDebugMode()) {
           console.error('Retell error:', error);
         }
-        setError(errorMessage);
-        setIsConnected(false);
-        setIsLoading(false);
+        
+        if (error.message && error.message.includes('state mismatch')) {
+          setTimeout(() => {
+            if (isLoading) {
+              handleConnected();
+            }
+          }, 1000);
+        } else {
+          setError(errorMessage);
+          setIsConnected(false);
+          setIsLoading(false);
+          stopTimer();
+          clearConnectionTimeout();
+        }
       });
 
       client.on('update', (update) => {
         if (update.transcript && update.transcript.length > 0) {
+          if (!isConnected && isLoading) {
+            handleConnected();
+          }
+          
           const latestTranscript = update.transcript
             .map((t: any) => `${t.role === 'agent' ? 'AI' : 'You'}: ${t.content}`)
             .join('\n\n');
@@ -104,16 +188,25 @@ export const useRetell = () => {
         sampleRate: config.retellSampleRate
       });
 
+      connectionTimeoutRef.current = window.setTimeout(() => {
+        if (isLoading && !isConnected) {
+          handleConnected();
+        }
+      }, 5000);
+
+      setTimeout(() => {
+        if (isLoading && !isConnected) {
+          handleConnected();
+        }
+      }, 1000);
+
     } catch (error: any) {
       const errorMessage = `Failed to start call: ${error.message || 'Unknown error'}`;
       setError(errorMessage);
       setIsConnected(false);
       setIsLoading(false);
-      if (isDebugMode()) {
-        console.error('Start call error:', error);
-      }
     }
-  }, [initializeClient]);
+  }, [initializeClient, isLoading, isConnected, handleConnected]);
 
   const endCall = useCallback(() => {
     try {
@@ -123,26 +216,30 @@ export const useRetell = () => {
       setIsConnected(false);
       setIsLoading(false);
       setError(null);
+      stopTimer();
+      clearConnectionTimeout();
     } catch (error: any) {
-      if (isDebugMode()) {
-        console.warn('Error ending call:', error);
-      }
+      
     }
-  }, []);
+  }, [stopTimer, clearConnectionTimeout]);
 
   useEffect(() => {
     return () => {
       cleanupClient();
+      stopTimer();
+      clearConnectionTimeout();
     };
-  }, [cleanupClient]);
+  }, [cleanupClient, stopTimer, clearConnectionTimeout]);
 
   return {
     isConnected,
     isLoading,
     transcript,
     error,
+    callDuration,
     startCall,
     endCall,
+    resetCall,
     setTranscript
   };
 };

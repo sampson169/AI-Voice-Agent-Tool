@@ -20,7 +20,13 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
     agentId: agentConfig.id || 'agent_fa51b58953a177984c9e173910',
     callType: 'web',
   });
-  const { isConnected, isLoading, transcript, error: retellError, startCall: startRetellCall, endCall: endRetellCall, setTranscript } = useRetell();
+  const { isConnected, isLoading, transcript, error: retellError, callDuration, startCall: startRetellCall, endCall: endRetellCall, resetCall, setTranscript } = useRetell();
+
+  const formatDuration = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
 
   const startCall = async () => {
     if (!callData.driverName || !callData.loadNumber) {
@@ -34,6 +40,7 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
 
     try {
       setIsCallInProgress(true);
+      resetCall();
       
       if (callData.callType === 'web') {
         try {
@@ -230,7 +237,7 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
       transcript,
       summary: generateSummary(transcript),
       timestamp: new Date().toISOString(),
-      duration: Math.floor((Date.now() - (Date.now() - 45000)) / 1000),
+      duration: callDuration > 0 ? callDuration : Math.floor((Date.now() - (Date.now() - 45000)) / 1000),
     };
     
     onCallEnd(result);
@@ -370,21 +377,35 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
         ) : (
           <div className="space-y-6">
             <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-                <Phone className="h-8 w-8 text-green-600 animate-pulse" />
+              <div className={`inline-flex items-center justify-center w-16 h-16 ${isConnected ? 'bg-green-100' : 'bg-yellow-100'} rounded-full mb-4`}>
+                <Phone className={`h-8 w-8 ${isConnected ? 'text-green-600' : 'text-yellow-600'} ${!isConnected ? 'animate-pulse' : ''}`} />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                {isConnected ? 'Call in Progress' : 'Connecting...'}
+                {isConnected ? 'Call Connected' : isLoading ? 'Connecting...' : 'Call in Progress'}
               </h3>
-              <p className="text-gray-600">
+              <p className="text-gray-600 mb-4">
                 {isConnected 
                   ? `Talking to ${callData.driverName} about load ${callData.loadNumber}`
                   : `Setting up call with ${callData.driverName} for load ${callData.loadNumber}`
                 }
               </p>
-              {!isConnected && (
+              
+              {isConnected && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 inline-block">
+                  <div className="flex items-center space-x-2 text-green-700">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="font-mono text-lg font-semibold">
+                      {formatDuration(callDuration)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-green-600 mt-1">Call Duration</p>
+                </div>
+              )}
+              
+              {!isConnected && isLoading && (
                 <div className="mt-4">
-                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-600"></div>
+                  <p className="text-sm text-gray-500 mt-2">Establishing connection...</p>
                 </div>
               )}
             </div>
@@ -431,11 +452,21 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
             <div className="border rounded-lg p-4 bg-gray-50">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="font-medium text-gray-900">Live Transcript</h4>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-                  <span className="text-sm text-gray-600">
-                    {isConnected ? 'Connected' : 'Connecting...'}
-                  </span>
+                <div className="flex items-center space-x-3">
+                  {isConnected && (
+                    <div className="text-xs text-gray-500 font-mono">
+                      {formatDuration(callDuration)}
+                    </div>
+                  )}
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      isConnected ? 'bg-green-500' : 
+                      isLoading ? 'bg-yellow-500 animate-pulse' : 'bg-gray-400'
+                    }`}></div>
+                    <span className="text-sm text-gray-600">
+                      {isConnected ? 'Connected' : isLoading ? 'Connecting...' : 'Disconnected'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="h-64 overflow-y-auto font-mono text-sm whitespace-pre-wrap">
