@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Dashboard from './components/Dashboard';
 import AgentConfiguration from './components/AgentConfiguration';
 import CallInterface from './components/CallInterface';
 import CallResults from './components/CallResults';
+import ErrorBoundary from './components/ErrorBoundary';
 import type { AppView, AgentConfig, CallResult } from './types';
 
 function App() {
@@ -19,31 +20,33 @@ function App() {
       />
       
       <div className="container mx-auto px-4 py-8">
-        {currentView === 'config' && (
-          <AgentConfiguration 
-            onConfigSave={setAgentConfig}
-            onStartCall={() => setCurrentView('call')}
-          />
-        )}
-        
-        {currentView === 'call' && agentConfig && (
-          <CallInterface 
-            agentConfig={agentConfig}
-            onCallEnd={(result) => {
-              setCallResult(result);
-              setCurrentView('results');
-            }}
-            onBack={() => setCurrentView('config')}
-          />
-        )}
-        
-        {currentView === 'results' && callResult && (
-          <CallResults 
-            callResult={callResult}
-            onNewCall={() => setCurrentView('call')}
-            onBackToConfig={() => setCurrentView('config')}
-          />
-        )}
+        <ErrorBoundary>
+          {currentView === 'config' && (
+            <AgentConfiguration 
+              onConfigSave={setAgentConfig}
+              onStartCall={() => setCurrentView('call')}
+            />
+          )}
+          
+          {currentView === 'call' && agentConfig && (
+            <CallInterface 
+              agentConfig={agentConfig}
+              onCallEnd={(result) => {
+                setCallResult(result);
+                setCurrentView('results');
+              }}
+              onBack={() => setCurrentView('config')}
+            />
+          )}
+          
+          {currentView === 'results' && callResult && (
+            <CallResults 
+              callResult={callResult}
+              onNewCall={() => setCurrentView('call')}
+              onBackToConfig={() => setCurrentView('config')}
+            />
+          )}
+        </ErrorBoundary>
       </div>
     </div>
   );

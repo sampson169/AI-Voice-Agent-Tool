@@ -20,7 +20,7 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
     agentId: agentConfig.id || 'agent_fa51b58953a177984c9e173910',
     callType: 'web',
   });
-  const { isConnected, transcript, error: retellError, startCall: startRetellCall, endCall: endRetellCall, setTranscript } = useRetell();
+  const { isConnected, isLoading, transcript, error: retellError, startCall: startRetellCall, endCall: endRetellCall, setTranscript } = useRetell();
 
   const startCall = async () => {
     if (!callData.driverName || !callData.loadNumber) {
@@ -28,11 +28,19 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
       return;
     }
 
+    if (isCallInProgress || isLoading) {
+      return;
+    }
+
     try {
       setIsCallInProgress(true);
       
       if (callData.callType === 'web') {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (mediaError: any) {
+          throw new Error(`Microphone access denied: ${mediaError.message}`);
+        }
       }
 
       const response = await api.startCall(callData);
@@ -44,8 +52,10 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
       }
       
     } catch (error: any) {
-      alert(`Failed to start call: ${error.message || 'Unknown error'}. Please check your configuration and try again.`);
+      const errorMessage = error.message || 'Unknown error occurred';
+      alert(`Failed to start call: ${errorMessage}. Please check your configuration and try again.`);
       setIsCallInProgress(false);
+      console.error('Call start error:', error);
     }
   };
 
@@ -138,8 +148,13 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
   };
 
   const endCall = () => {
-    endRetellCall();
-    setIsCallInProgress(false);
+    try {
+      endRetellCall();
+    } catch (error) {
+      console.warn('Error ending call:', error);
+    } finally {
+      setIsCallInProgress(false);
+    }
     
     const generateSummary = (transcript: string) => {
       const lowerTranscript = transcript.toLowerCase();

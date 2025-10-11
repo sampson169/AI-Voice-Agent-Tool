@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { RetellWebClient } from 'retell-client-js-sdk';
+import config, { isDebugMode } from '../utils/config';
 
 export const useRetell = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -7,25 +8,49 @@ export const useRetell = () => {
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<RetellWebClient | null>(null);
+  const isInitializedRef = useRef(false);
 
-  const initializeClient = async () => {
+  const cleanupClient = useCallback(() => {
+    if (clientRef.current) {
+      try {
+        clientRef.current.stopCall();
+        clientRef.current = null;
+        isInitializedRef.current = false;
+      } catch (error) {
+        if (isDebugMode()) {
+          console.warn('Error during client cleanup:', error);
+        }
+      }
+    }
+  }, []);
+
+  const initializeClient = useCallback(async () => {
+    if (isInitializedRef.current && clientRef.current) {
+      return clientRef.current;
+    }
+
     try {
-      setIsLoading(true);
-      setError(null);
+      cleanupClient();
       
       const client = new RetellWebClient();
       
       client.on('conversationStarted', () => {
         setIsConnected(true);
         setIsLoading(false);
+        setError(null);
       });
 
       client.on('conversationEnded', () => {
         setIsConnected(false);
+        setIsLoading(false);
       });
 
       client.on('error', (error) => {
-        setError(`Connection error: ${error.message || 'Unknown error'}`);
+        const errorMessage = `Connection error: ${error.message || 'Unknown error'}`;
+        if (isDebugMode()) {
+          console.error('Retell error:', error);
+        }
+        setError(errorMessage);
         setIsConnected(false);
         setIsLoading(false);
       });
@@ -35,70 +60,81 @@ export const useRetell = () => {
           const latestTranscript = update.transcript
             .map((t: any) => `${t.role === 'agent' ? 'AI' : 'You'}: ${t.content}`)
             .join('\n\n');
-          setTranscript(latestTranscript + '\n\n');
+          
+          let finalTranscript = latestTranscript + '\n\n';
+          
+          if (finalTranscript.length > config.maxTranscriptLength) {
+            finalTranscript = '...' + finalTranscript.slice(-(config.maxTranscriptLength - 3));
+          }
+          
+          setTranscript(finalTranscript);
         }
       });
 
       client.on('metadata', () => {
-        // Handle metadata if needed
+        
       });
       
       clientRef.current = client;
-      setIsLoading(false);
+      isInitializedRef.current = true;
+      
+      return client;
       
     } catch (error: any) {
-      setError(`Initialization failed: ${error.message || 'Unknown error'}`);
+      const errorMessage = `Initialization failed: ${error.message || 'Unknown error'}`;
+      setError(errorMessage);
       setIsLoading(false);
+      throw new Error(errorMessage);
     }
-  };
+  }, [cleanupClient]);
 
-  const startCall = async (accessToken: string) => {
+  const startCall = useCallback(async (accessToken: string) => {
     try {
       setError(null);
+      setIsLoading(true);
       
-      if (!clientRef.current) {
-        await initializeClient();
-      }
+      const client = await initializeClient();
 
-      if (!clientRef.current) {
+      if (!client) {
         throw new Error('Failed to initialize Retell client');
       }
 
-      setIsLoading(true);
-      
-      await clientRef.current.startCall({
+      await client.startCall({
         accessToken,
-        sampleRate: 24000
+        sampleRate: config.retellSampleRate
       });
 
     } catch (error: any) {
-      setError(`Failed to start call: ${error.message || 'Unknown error'}`);
+      const errorMessage = `Failed to start call: ${error.message || 'Unknown error'}`;
+      setError(errorMessage);
       setIsConnected(false);
       setIsLoading(false);
+      if (isDebugMode()) {
+        console.error('Start call error:', error);
+      }
     }
-  };
+  }, [initializeClient]);
 
-  const endCall = () => {
+  const endCall = useCallback(() => {
     try {
-      clientRef.current?.stopCall();
+      if (clientRef.current) {
+        clientRef.current.stopCall();
+      }
       setIsConnected(false);
+      setIsLoading(false);
       setError(null);
     } catch (error: any) {
-      // Error ending call
+      if (isDebugMode()) {
+        console.warn('Error ending call:', error);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
     return () => {
-      if (clientRef.current) {
-        try {
-          clientRef.current.stopCall();
-        } catch (error) {
-          // Error cleaning up client
-        }
-      }
+      cleanupClient();
     };
-  }, []);
+  }, [cleanupClient]);
 
   return {
     isConnected,

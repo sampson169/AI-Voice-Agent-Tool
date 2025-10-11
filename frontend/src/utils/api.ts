@@ -1,10 +1,10 @@
 import axios from 'axios';
+import config from './config';
 import type { AgentConfig, CallRequest, CallResult } from '../types';
 
-const API_BASE_URL = 'http://localhost:8000';
-
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: config.apiBaseUrl,
+  timeout: config.apiTimeout,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -32,7 +32,7 @@ export const api = {
       driver_name: callRequest.driverName,
       phone_number: callRequest.phoneNumber || null,
       load_number: callRequest.loadNumber,
-      agent_id: callRequest.agentId || 'agent_b4902d2c6973a595dc4cf5ad55',
+      agent_id: callRequest.agentId || config.defaultAgentId,
       call_type: callRequest.callType
     };
     
