@@ -150,9 +150,6 @@ OPTIMAL_VOICE_SETTINGS = {
     "enable_interruption": True
 }
 ```
-
-
-
 ---
 
 ## ✨ Features
@@ -372,6 +369,149 @@ RETELL_WEBHOOK_URL=https://0ae6ed66482a.ngrok-free.app/api/webhook/retell
 ```
 
 > **Note:** Replace placeholder values with your actual credentials.
+
+---
+
+## 🎯 Retell AI Agent Creation & Ngrok Setup
+
+### Setting Up Retell AI Agent
+
+1. **Create a Retell AI Account**
+   - Visit [Retell AI Dashboard](https://beta.retellai.com/)
+   - Sign up or log in to your account
+
+2. **Create a New Agent**
+   - Go to the "Agents" section in your dashboard
+   - Click "Create Agent"
+   - Configure your agent with the following settings:
+
+   ```json
+   {
+     "agent_name": "Logistics Dispatcher Agent",
+     "voice_id": "11labs-Adrian",
+     "response_delay": 600,
+     "llm_websocket_url": "wss://api.openai.com/v1/realtime",
+     "begin_message": "Hello! This is your logistics dispatcher. I'm calling to check on your current status and location. How are things going on your route today?",
+     "general_prompt": "You are a professional logistics dispatcher calling to check on a truck driver...",
+     "general_tools": [],
+     "states": [],
+     "last_modification_timestamp": 1635724800000,
+     "voice_temperature": 1,
+     "voice_speed": 1,
+     "volume": 1,
+     "responsiveness": 1,
+     "interruption_sensitivity": 1,
+     "enable_backchannel": true,
+     "backchannel_frequency": 0.9,
+     "backchannel_words": ["yeah", "uh-huh", "gotcha", "I see", "okay"],
+     "reminder_trigger_ms": 10000,
+     "reminder_max_count": 2,
+     "ambient_sound": "office",
+     "language": "en-US",
+     "webhook_url": "YOUR_NGROK_URL/api/webhook/retell",
+     "boosted_keywords": ["driver", "truck", "delivery", "location", "ETA", "emergency"],
+     "enable_transcription_formatting": true,
+     "opt_out_sensitive_data_storage": false,
+     "pronunciation_dictionary": [],
+     "normalize_for_speech": true,
+     "end_call_after_silence_ms": 30000,
+     "max_call_duration_ms": 1800000,
+     "from_number": "+1234567890",
+     "dynamic_variables": [],
+     "analysis_schema": {},
+     "client_messages": [],
+     "tool_call_strict_mode": false,
+     "metadata": {}
+   }
+   ```
+
+3. **Get Your Agent ID**
+   - After creating the agent, copy the Agent ID
+   - Add it to your `.env` file as `RETELL_AGENT_ID`
+
+### Setting Up Ngrok for Backend Webhooks
+
+Ngrok creates a secure tunnel to your local backend, allowing Retell AI to send webhooks to your development environment.
+
+1. **Install Ngrok**
+   ```bash
+   # Download from https://ngrok.com/download
+   # Or install via package manager:
+   
+   # Windows (Chocolatey)
+   choco install ngrok
+   
+   # macOS (Homebrew)
+   brew install ngrok/ngrok/ngrok
+   
+   # Linux (Snap)
+   sudo snap install ngrok
+   ```
+
+2. **Sign Up and Get Auth Token**
+   - Create account at [ngrok.com](https://ngrok.com/)
+   - Get your auth token from the dashboard
+   - Configure ngrok:
+   ```bash
+   ngrok config add-authtoken YOUR_AUTH_TOKEN
+   ```
+
+3. **Start Ngrok Tunnel**
+   ```bash
+   # Make sure your backend is running on port 8000
+   ngrok http 8000
+   ```
+
+   You'll see output like:
+   ```
+   Session Status                online
+   Account                       your-email@example.com
+   Version                       3.0.0
+   Region                        United States (us)
+   Forwarding                    https://abc123def.ngrok-free.app -> http://localhost:8000
+   ```
+
+4. **Copy the Ngrok URL**
+   - Copy the `https://abc123def.ngrok-free.app` URL
+   - This is your public webhook URL
+
+### Configuring Agent with Ngrok URL
+
+1. **Update Environment Variables**
+   Add the ngrok URL to your `.env` file:
+   ```env
+   RETELL_WEBHOOK_URL=https://abc123def.ngrok-free.app/api/webhook/retell
+   ```
+
+2. **Update Retell AI Agent Configuration**
+   - Go back to your Retell AI dashboard
+   - Edit your agent
+   - Update the webhook URL field:
+   ```
+   Webhook URL: https://abc123def.ngrok-free.app/api/webhook/retell
+   ```
+
+3. **Test the Configuration**
+   - Start your backend: `python main.py`
+   - Start ngrok: `ngrok http 8000`
+   - Make a test call through your frontend
+   - Check ngrok logs to see incoming webhook requests
+
+### Important Notes
+
+- **Ngrok URL Changes**: Free ngrok URLs change each time you restart ngrok. For persistent URLs, consider upgrading to ngrok Pro
+- **HTTPS Required**: Retell AI requires HTTPS webhooks, which ngrok provides automatically
+- **Firewall**: Ensure your firewall allows ngrok connections
+- **Testing**: Use ngrok's web interface at `http://127.0.0.1:4040` to inspect webhook requests
+
+### Webhook Testing
+
+You can test webhook delivery using the ngrok web interface:
+
+1. Open `http://127.0.0.1:4040` in your browser
+2. View incoming webhook requests in real-time
+3. Inspect request headers, body, and response codes
+4. Debug webhook issues by examining the detailed logs
 
 ---
 

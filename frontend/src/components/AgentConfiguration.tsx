@@ -347,16 +347,37 @@ This configuration handles both routine logistics check-ins and emergency situat
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Select Logistics Scenario Template
             </label>
+            <div className="mb-2 text-sm text-blue-600 font-medium">
+              Currently Selected: {
+                config.scenarioType === 'driver_checkin' ? 'Driver Check-in' :
+                config.scenarioType === 'emergency_protocol' ? 'Emergency Protocol' :
+                config.scenarioType === 'general' ? 'General Dispatcher' :
+                'None Selected'
+              }
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <button
                 type="button"
                 onClick={() => loadScenarioTemplate('driver_checkin')}
-                className="p-4 border border-gray-300 rounded-lg hover:border-primary-500 hover:bg-primary-50 text-left transition-colors"
+                className={`p-4 border rounded-lg text-left transition-colors ${
+                  config.scenarioType === 'driver_checkin' 
+                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' 
+                    : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                }`}
               >
                 <div className="flex items-start space-x-3">
-                  <Truck className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <Truck className={`h-5 w-5 mt-0.5 ${
+                    config.scenarioType === 'driver_checkin' ? 'text-blue-700' : 'text-blue-600'
+                  }`} />
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Scenario 1: Driver Check-in</h4>
+                    <h4 className={`font-semibold mb-2 ${
+                      config.scenarioType === 'driver_checkin' ? 'text-blue-900' : 'text-gray-900'
+                    }`}>
+                      Scenario 1: Driver Check-in
+                      {config.scenarioType === 'driver_checkin' && (
+                        <span className="ml-2 text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">SELECTED</span>
+                      )}
+                    </h4>
                     <p className="text-sm text-gray-600">
                       End-to-end status updates with dynamic conversation flow based on driver's current situation (driving, arrived, delayed)
                     </p>
@@ -367,12 +388,25 @@ This configuration handles both routine logistics check-ins and emergency situat
               <button
                 type="button"
                 onClick={() => loadScenarioTemplate('emergency_protocol')}
-                className="p-4 border border-gray-300 rounded-lg hover:border-red-500 hover:bg-red-50 text-left transition-colors"
+                className={`p-4 border rounded-lg text-left transition-colors ${
+                  config.scenarioType === 'emergency_protocol' 
+                    ? 'border-red-500 bg-red-50 ring-2 ring-red-200' 
+                    : 'border-gray-300 hover:border-red-500 hover:bg-red-50'
+                }`}
               >
                 <div className="flex items-start space-x-3">
-                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <AlertTriangle className={`h-5 w-5 mt-0.5 ${
+                    config.scenarioType === 'emergency_protocol' ? 'text-red-700' : 'text-red-600'
+                  }`} />
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Scenario 2: Emergency Protocol</h4>
+                    <h4 className={`font-semibold mb-2 ${
+                      config.scenarioType === 'emergency_protocol' ? 'text-red-900' : 'text-gray-900'
+                    }`}>
+                      Scenario 2: Emergency Protocol
+                      {config.scenarioType === 'emergency_protocol' && (
+                        <span className="ml-2 text-xs px-2 py-1 bg-red-100 text-red-800 rounded-full">SELECTED</span>
+                      )}
+                    </h4>
                     <p className="text-sm text-gray-600">
                       Emergency detection and response with immediate protocol switch for accidents, breakdowns, and medical situations
                     </p>
@@ -383,12 +417,25 @@ This configuration handles both routine logistics check-ins and emergency situat
               <button
                 type="button"
                 onClick={() => loadScenarioTemplate('general')}
-                className="p-4 border border-gray-300 rounded-lg hover:border-green-500 hover:bg-green-50 text-left transition-colors"
+                className={`p-4 border rounded-lg text-left transition-colors ${
+                  config.scenarioType === 'general' 
+                    ? 'border-green-500 bg-green-50 ring-2 ring-green-200' 
+                    : 'border-gray-300 hover:border-green-500 hover:bg-green-50'
+                }`}
               >
                 <div className="flex items-start space-x-3">
-                  <Settings className="h-5 w-5 text-green-600 mt-0.5" />
+                  <Settings className={`h-5 w-5 mt-0.5 ${
+                    config.scenarioType === 'general' ? 'text-green-700' : 'text-green-600'
+                  }`} />
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">General Dispatcher</h4>
+                    <h4 className={`font-semibold mb-2 ${
+                      config.scenarioType === 'general' ? 'text-green-900' : 'text-gray-900'
+                    }`}>
+                      General Dispatcher
+                      {config.scenarioType === 'general' && (
+                        <span className="ml-2 text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">SELECTED</span>
+                      )}
+                    </h4>
                     <p className="text-sm text-gray-600">
                       Comprehensive agent that handles both routine check-ins and emergency situations seamlessly
                     </p>

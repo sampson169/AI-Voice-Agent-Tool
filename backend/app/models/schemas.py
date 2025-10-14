@@ -28,11 +28,14 @@ class EmergencyType(str, Enum):
 class AgentConfigCreate(BaseModel):
     name: str = Field(..., description="Name of the agent configuration")
     prompt: str = Field(..., description="Main conversation prompt")
-    scenario_type: str = Field(default="general", description="Type of logistics scenario")
+    scenario_type: str = Field(default="general", description="Type of logistics scenario", alias="scenarioType")
     voice_settings: Dict[str, Any] = Field(default_factory=dict)
     emergency_phrases: List[str] = Field(default_factory=list)
     structured_fields: List[Dict[str, Any]] = Field(default_factory=list)
     retell_agent_id: Optional[str] = Field(None, description="Associated Retell agent ID")
+    
+    class Config:
+        validate_by_name = True
 
 class CallRequest(BaseModel):
     driver_name: str = Field(..., description="Name of the driver")
@@ -76,10 +79,13 @@ class AgentConfigResponse(BaseModel):
     id: str
     name: str
     prompt: str
-    scenario_type: str
+    scenario_type: str = Field(alias="scenarioType")
     voice_settings: Dict[str, Any]
     emergency_phrases: List[str]
     structured_fields: List[Dict[str, Any]]
     retell_agent_id: Optional[str]
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        validate_by_name = True
