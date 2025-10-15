@@ -1,65 +1,92 @@
-import { Component } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import ErrorDisplay from './ui/ErrorDisplay';
+import { createError } from '../utils/errorHandling';
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
-interface State {
+interface ErrorState {
   hasError: boolean;
   error?: Error;
 }
 
-class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false
+const ErrorBoundary: React.FC<Props> = ({ children, fallback, onError }) => {
+  const [errorState, setErrorState] = useState<ErrorState>({ hasError: false });
+
+  useEffect(() => {
+    if (errorState.hasError) {
+      setErrorState({ hasError: false });
+    }
+  }, [children]);
+
+  const handleRetry = () => {
+    setErrorState({ hasError: false, error: undefined });
   };
 
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
-  }
+  const handleErrorClose = () => {
+    if (errorState.error?.name === 'ChunkLoadError') {
+      window.location.reload();
+    } else {
+      setErrorState({ hasError: false, error: undefined });
+    }
+  };
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
-  }
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      const error = new Error(event.message);
+      error.stack = event.error?.stack;
+      setErrorState({ hasError: true, error });
+      onError?.(error, { componentStack: '' });
+    };
 
-  public render() {
-    if (this.state.hasError) {
-      return this.props.fallback || (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4 m-4">
-          <div className="flex">
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Something went wrong</h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>An error occurred while processing your request. Please refresh the page and try again.</p>
-                {this.state.error && (
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-red-600 hover:text-red-800">
-                      Show error details
-                    </summary>
-                    <pre className="mt-2 text-xs bg-red-100 p-2 rounded overflow-auto">
-                      {this.state.error.message}
-                    </pre>
-                  </details>
-                )}
-              </div>
-              <div className="mt-4">
-                <button
-                  onClick={() => this.setState({ hasError: false, error: undefined })}
-                  className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
-                >
-                  Try Again
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const error = new Error(event.reason?.message || 'Unhandled Promise Rejection');
+      setErrorState({ hasError: true, error });
+      onError?.(error, { componentStack: '' });
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, [onError]);
+
+  if (errorState.hasError && errorState.error) {
+    if (fallback) {
+      return <>{fallback}</>;
     }
 
-    return this.props.children;
+    const appError = createError(
+      'UNKNOWN_ERROR',
+      errorState.error.message,
+      'An unexpected error occurred. The application may need to be refreshed.',
+      'high',
+      {
+        stack: errorState.error.stack,
+        name: errorState.error.name
+      }
+    );
+
+    return (
+      <div className="p-4 m-4">
+        <ErrorDisplay
+          error={appError}
+          isVisible={true}
+          onClose={handleErrorClose}
+          onRetry={handleRetry}
+        />
+      </div>
+    );
   }
-}
+
+  return <>{children}</>;
+};
 
 export default ErrorBoundary;
