@@ -13,15 +13,28 @@ class RetellService:
         }
     
     async def create_phone_call(self, call_request: CallRequest, from_number: str = "+15551234567") -> Dict[str, Any]:
+        from app.database.supabase import supabase_client
+        agent_config = await supabase_client.get_agent_config(call_request.agent_id)
+        
+        dynamic_variables = {
+            "driver_name": call_request.driver_name,
+            "load_number": call_request.load_number,
+            "agent_id": call_request.agent_id
+        }
+        
+        if agent_config:
+            dynamic_variables.update({
+                "agent_prompt": agent_config.get("prompt", ""),
+                "scenario_type": agent_config.get("scenario_type", "general"),
+                "emergency_phrases": ",".join(agent_config.get("emergency_phrases", []))
+            })
+        
         payload = {
             "from_number": from_number,
             "to_number": call_request.phone_number,
             "agent_id": call_request.agent_id,
             "override_agent_id": call_request.agent_id,
-            "retell_llm_dynamic_variables": {
-                "driver_name": call_request.driver_name,
-                "load_number": call_request.load_number
-            }
+            "retell_llm_dynamic_variables": dynamic_variables
         }
         
         async with httpx.AsyncClient() as client:
@@ -47,7 +60,8 @@ class RetellService:
         
         dynamic_variables = {
             "driver_name": call_request.driver_name,
-            "load_number": call_request.load_number
+            "load_number": call_request.load_number,
+            "agent_id": call_request.agent_id
         }
         
         if agent_config:

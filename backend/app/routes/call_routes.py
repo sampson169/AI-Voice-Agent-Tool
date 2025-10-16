@@ -7,18 +7,33 @@ from datetime import datetime
 
 router = APIRouter(prefix="/api/calls", tags=["calls"])
 
+@router.post("/web")
+async def create_web_call(call_request: CallRequest):
+    """Create a web call specifically"""
+    try:
+        call_request.call_type = "web"
+        return await start_call(call_request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating web call: {str(e)}")
+
+@router.post("/phone")
+async def create_phone_call(call_request: CallRequest):
+    """Create a phone call specifically"""
+    try:
+        call_request.call_type = "phone"
+        return await start_call(call_request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating phone call: {str(e)}")
+
 @router.post("/start")
 async def start_call(call_request: CallRequest):
     try:
         call_id = str(uuid.uuid4())
         
-        # Get or create agent configuration
         from app.core.config import settings
         if not call_request.agent_id or call_request.agent_id in ['default', 'default-logistics-agent']:
-            # Use default logistics agent
             call_request.agent_id = 'default-logistics-agent'
             
-            # Ensure default agent exists in database
             existing_agent = await supabase_client.get_agent_config('default-logistics-agent')
             if not existing_agent:
                 from app.services.prompt_templates import LogisticsPromptTemplates
