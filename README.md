@@ -596,13 +596,23 @@ The frontend will be available at [http://localhost:3000](http://localhost:3000)
 
 ## ⚙️ Backend Configuration
 
-### Getting Supabase Credentials
+### Getting Required API Keys
 
+#### 1. Supabase Credentials
 1. Go to [Supabase Dashboard](https://app.supabase.com/)
 2. Select your project or create a new one
 3. Go to **Settings** → **API**
 4. Copy the **Project URL** and **anon/public key**
 5. Add them to your `.env` file
+
+#### 2. OpenAI API Key (Required for PIPECAT)
+1. Go to [OpenAI Platform](https://platform.openai.com/)
+2. Sign up or log in to your account
+3. Navigate to **API Keys** section
+4. Click **Create new secret key**
+5. Copy the key and add it to your `.env` file as `OPENAI_API_KEY`
+
+> **Note:** OpenAI API key is required for the PIPECAT voice agent to function properly.
 
 ### Optional Configuration
 
@@ -616,6 +626,10 @@ RELOAD=True
 
 # CORS Configuration
 ALLOWED_ORIGINS=["http://localhost:3000", "http://127.0.0.1:3000"]
+
+# Optional PIPECAT Services
+CARTESIA_API_KEY=your_cartesia_api_key_here  # For advanced TTS
+DEEPGRAM_API_KEY=your_deepgram_api_key_here  # For advanced STT
 ```
 
 

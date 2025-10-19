@@ -1,5 +1,5 @@
 import React from 'react';
-import { Truck, Settings, Phone, BarChart3 } from 'lucide-react';
+import { Truck, Settings, Phone, BarChart3, TrendingUp } from 'lucide-react';
 import type { AppView, AgentConfig } from '../types';
 
 interface DashboardProps {
@@ -13,6 +13,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currentView, onViewChange, agentC
     { id: 'config' as AppView, label: 'Agent Configuration', icon: Settings },
     { id: 'call' as AppView, label: 'Make Call', icon: Phone },
     { id: 'results' as AppView, label: 'Call Results', icon: BarChart3 },
+    { id: 'analytics' as AppView, label: 'Analytics', icon: TrendingUp },
   ];
 
   return (

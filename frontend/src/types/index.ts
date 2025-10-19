@@ -55,4 +55,4 @@ export interface StructuredField {
   options?: string[];
 }
 
-export type AppView = 'config' | 'call' | 'results';
+export type AppView = 'config' | 'call' | 'results' | 'analytics';

@@ -4,21 +4,46 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.database.supabase import supabase_client
-from app.routes import agent_routes, call_routes, webhook_routes
+from app.routes import agent_routes, call_routes, webhook_routes, analytics_routes
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     print("🚀 Starting Voice Agent Tool...")
+    
+    # Test Supabase connection
     connection_success = await supabase_client.test_connection()
     if connection_success:
         print("✅ Supabase connected successfully!")
     else:
         print("❌ Supabase connection failed - check your configuration")
     
+    # Initialize PIPECAT service
+    try:
+        from app.pipecat.pipecat_service import pipecat_service
+        pipecat_initialized = await pipecat_service.initialize(
+            openai_api_key=settings.openai_api_key,
+            cartesia_api_key=getattr(settings, 'cartesia_api_key', None),
+            deepgram_api_key=getattr(settings, 'deepgram_api_key', None)
+        )
+        
+        if pipecat_initialized:
+            print("✅ PIPECAT voice agent initialized successfully!")
+        else:
+            print("⚠️ PIPECAT initialization failed - using fallback mode")
+    except Exception as e:
+        print(f"⚠️ PIPECAT initialization error: {e} - using fallback mode")
+    
     yield  
+    
+    # Cleanup
     print("👋 Shutting down Voice Agent Tool...")
+    try:
+        from app.pipecat.pipecat_service import pipecat_service
+        await pipecat_service.shutdown()
+    except Exception as e:
+        print(f"Warning: Error during PIPECAT shutdown: {e}")
     
 
 app = FastAPI(
@@ -38,6 +63,7 @@ app.add_middleware(
 app.include_router(agent_routes.router)
 app.include_router(call_routes.router)
 app.include_router(webhook_routes.router)
+app.include_router(analytics_routes.router)
 
 @app.get("/")
 async def read_root():

@@ -1,11 +1,26 @@
+"""
+DEPRECATED: Retell AI Webhook Routes
+This module is being phased out as part of the PIPECAT migration.
+These routes are kept for backwards compatibility during the transition period.
+"""
+
 from fastapi import APIRouter, Request, HTTPException, WebSocket, WebSocketDisconnect
 from app.database.supabase import supabase_client
 from app.models.schemas import RetellWebhook
 import json
 import re
 from typing import Dict, Any
+import warnings
 
-router = APIRouter(prefix="/api/webhook", tags=["webhook"])
+# Issue deprecation warning
+warnings.warn(
+    "webhook_routes.py is deprecated and will be removed in a future version. "
+    "Use PIPECAT voice agent instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
+
+router = APIRouter(prefix="/api/webhook", tags=["webhook", "deprecated"])
 
 @router.get("/test")
 async def test_webhook():
