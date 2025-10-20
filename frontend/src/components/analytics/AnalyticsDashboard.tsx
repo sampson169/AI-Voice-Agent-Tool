@@ -47,7 +47,6 @@ const AnalyticsDashboard: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch dashboard metrics
       const metricsResponse = await fetch(`${config.apiBaseUrl}/api/analytics/dashboard?days=${days}`);
       if (!metricsResponse.ok) {
         throw new Error('Failed to fetch dashboard metrics');
@@ -55,7 +54,6 @@ const AnalyticsDashboard: React.FC = () => {
       const metricsData = await metricsResponse.json();
       setMetrics(metricsData.data);
 
-      // Fetch outcome distribution
       const outcomesResponse = await fetch(`${config.apiBaseUrl}/api/analytics/outcomes?days=${days}`);
       if (!outcomesResponse.ok) {
         throw new Error('Failed to fetch outcome distribution');
@@ -63,7 +61,6 @@ const AnalyticsDashboard: React.FC = () => {
       const outcomesData = await outcomesResponse.json();
       setOutcomes(outcomesData.distribution || []);
 
-      // Fetch trends
       const trendsResponse = await fetch(`${config.apiBaseUrl}/api/analytics/trends?days=${days}`);
       if (!trendsResponse.ok) {
         throw new Error('Failed to fetch trends');

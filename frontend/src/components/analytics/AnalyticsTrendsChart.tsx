@@ -21,7 +21,7 @@ const AnalyticsTrendsChart: React.FC<AnalyticsTrendsChartProps> = ({ data }) => 
   const chartData = data.map(item => ({
     ...item,
     date: formatDate(item.date),
-    avg_duration: Math.round(item.avg_duration * 10) / 10 // Round to 1 decimal
+    avg_duration: Math.round(item.avg_duration * 10) / 10
   }));
 
   return (

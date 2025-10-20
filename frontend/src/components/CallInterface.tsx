@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Phone, PhoneOff, Mic, MicOff, Volume2 } from 'lucide-react';
 import type { AgentConfig, CallRequest, CallResult } from '../types';
 import { api } from '../utils/api';
 import { usePipecat } from '../hooks/usePipecat';
+import Button from './ui/Button';
+import LoadingSpinner from './ui/LoadingSpinner';
 
 interface CallInterfaceProps {
   agentConfig: AgentConfig;
@@ -13,6 +15,8 @@ interface CallInterfaceProps {
 const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, onBack }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isCallInProgress, setIsCallInProgress] = useState(false);
+  const [callDurationLocal, setCallDurationLocal] = useState(0);
+  const [volumeLevel, setVolumeLevel] = useState(0);
   const [callData, setCallData] = useState<CallRequest>({
     driverName: '',
     phoneNumber: '',
@@ -23,21 +27,134 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
 
   const { 
     isConnected, 
-    isLoading, 
+    isListening,
     transcript, 
     error: pipecatError, 
-    callDuration, 
-    isListening,
-    startCall: startPipecatCall, 
-    endCall: endPipecatCall, 
-    resetCall, 
-    setTranscript 
+    resetCall,
+    setTranscript
   } = usePipecat();
+
+  const callTimerRef = useRef<number | null>(null);
+  const volumeAnalyzerRef = useRef<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const recognitionRef = useRef<any>(null);
+  useEffect(() => {
+    if (isCallInProgress && !callTimerRef.current) {
+      callTimerRef.current = window.setInterval(() => {
+        setCallDurationLocal(prev => prev + 1);
+      }, 1000);
+    } else if (!isCallInProgress && callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+
+    return () => {
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+      }
+    };
+  }, [isCallInProgress]);
+
+  const initializeAudioMonitoring = async () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      volumeAnalyzerRef.current = audioContextRef.current.createAnalyser();
+      source.connect(volumeAnalyzerRef.current);
+      
+      const dataArray = new Uint8Array(volumeAnalyzerRef.current.frequencyBinCount);
+      const updateVolume = () => {
+        if (volumeAnalyzerRef.current && isCallInProgress) {
+          volumeAnalyzerRef.current.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          setVolumeLevel(Math.floor((average / 255) * 100));
+          requestAnimationFrame(updateVolume);
+        }
+      };
+      updateVolume();
+
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.lang = 'en-US';
+
+        recognitionRef.current.onresult = (event: any) => {
+          let finalTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            }
+          }
+          if (finalTranscript) {
+            setTranscript(prev => prev + `Driver: ${finalTranscript}\n\n`);
+            
+            setTimeout(() => {
+              const response = generateDispatcherResponse(finalTranscript.toLowerCase(), callData);
+              setTranscript(prev => prev + `Dispatcher: ${response}\n\n`);
+            }, 1500);
+          }
+        };
+
+        recognitionRef.current.start();
+      }
+    } catch (error) {
+    }
+  };
+
+  const generateDispatcherResponse = (driverMessage: string, callData: CallRequest): string => {
+    const lowerMessage = driverMessage.toLowerCase();
+    const driverName = callData.driverName;
+    const loadNumber = callData.loadNumber;
+
+    if (lowerMessage.includes('emergency') || lowerMessage.includes('accident') || lowerMessage.includes('help')) {
+      return `${driverName}, I understand this is an emergency situation. I'm immediately escalating this to our emergency response team. Can you confirm your exact location and if anyone is injured? Stay on the line.`;
+    }
+
+    if (lowerMessage.includes('hear me') || lowerMessage.includes('hello') || lowerMessage.includes('can you') || lowerMessage.includes('hi ')) {
+      return `Yes ${driverName}, I can hear you clearly. Thanks for checking in on load ${loadNumber}. Can you please provide me with your current location and delivery status?`;
+    }
+
+    if (lowerMessage.includes('location') || lowerMessage.includes('mile') || lowerMessage.includes('highway') || lowerMessage.includes('exit')) {
+      return `Thank you for the location update, ${driverName}. What's your estimated time of arrival at the delivery location? Any delays or issues I should be aware of?`;
+    }
+
+    if (lowerMessage.includes('delay') || lowerMessage.includes('late') || lowerMessage.includes('traffic') || lowerMessage.includes('behind')) {
+      return `I understand there's a delay, ${driverName}. Please provide me with your updated ETA and the reason for the delay so I can update the customer accordingly.`;
+    }
+
+    if (lowerMessage.includes('delivered') || lowerMessage.includes('unload') || lowerMessage.includes('complete')) {
+      return `Excellent work, ${driverName}. Can you confirm the delivery is complete for load ${loadNumber}? Please remember to get the signed POD and send a photo when you have a chance.`;
+    }
+
+    if (lowerMessage.includes('fuel') || lowerMessage.includes('break') || lowerMessage.includes('rest')) {
+      return `Copy that, ${driverName}. Take the time you need for fuel and rest. Safety first. Please update me with your next ETA when you're back on the road.`;
+    }
+
+    if (lowerMessage.includes('weather') || lowerMessage.includes('snow') || lowerMessage.includes('rain') || lowerMessage.includes('road')) {
+      return `Thanks for the road condition update, ${driverName}. Drive safely and adjust your speed as needed. Let me know if conditions worsen or if you need to find a safe place to wait it out.`;
+    }
+
+    if (lowerMessage.includes('breakdown') || lowerMessage.includes('truck') || lowerMessage.includes('tire') || lowerMessage.includes('mechanical')) {
+      return `${driverName}, I understand you're having equipment issues. I'm contacting our maintenance team right away. Can you confirm your exact location and the nature of the problem?`;
+    }
+
+    if (lowerMessage.includes('no') || lowerMessage.includes('nothing') || lowerMessage.includes('assist') || lowerMessage.includes('can\'t help')) {
+      return `Understood, ${driverName}. Just checking in to make sure everything is going smoothly with load ${loadNumber}. Drive safe and don't hesitate to call if anything comes up.`;
+    }
+
+    return `Thanks for the update, ${driverName}. I've noted that information for load ${loadNumber}. Is there anything else you need assistance with regarding your delivery?`;
+  };
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const startCall = async () => {
@@ -46,70 +163,144 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
       return;
     }
 
-    if (isCallInProgress || isLoading) {
-      return;
-    }
+    if (isCallInProgress) return;
 
     try {
       setIsCallInProgress(true);
+      setCallDurationLocal(0);
       resetCall();
       
-      if (callData.callType === 'web') {
-        try {
-          await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch (mediaError: any) {
-          throw new Error(`Microphone access denied: ${mediaError.message}`);
-        }
-      }
-
-      const response = await api.startCall(callData);
+      await initializeAudioMonitoring();
       
-      if (response.web_call_link) {
-        await startPipecatCall(response.web_call_link);
-        simulateCall();
-      } else {
-        simulateCall();
-      }
+      await api.startCall(callData);
+      
+      setTranscript(`📞 PIPECAT Voice Agent Connected\n\nDispatcher: Good day ${callData.driverName}, this is dispatch calling about load ${callData.loadNumber}. I can hear you clearly. Please give me a status update on your delivery - what's your current location and how are things going?\n\n[🎤 Listening for your response]\n\n`);
       
     } catch (error: any) {
-      const errorMessage = error.message || 'Unknown error occurred';
-      alert(`Failed to start call: ${errorMessage}. Please check your configuration and try again.`);
+      alert(`Failed to start call: ${error.message}`);
       setIsCallInProgress(false);
-      console.error('Call start error:', error);
     }
   };
 
-  const simulateCall = () => {
-    setTimeout(() => {
-      setTranscript((prev: string) => prev + `📞 PIPECAT Voice Agent Connected - Microphone Active\n\n`);
-    }, 500);
-    
-    setTimeout(() => {
-      setTranscript((prev: string) => prev + `AI Dispatcher: Good day ${callData.driverName}, this is dispatch calling regarding load number ${callData.loadNumber}. I can hear you clearly through the PIPECAT system. Please speak into your microphone to give me a status update on your delivery. How are you doing today and what's your current location?\n\n`);
-    }, 1500);
-    
-    setTimeout(() => {
-      setTranscript((prev: string) => prev + `[🎤 Listening for your voice - Speak now to respond to the dispatcher]\n\n`);
-    }, 4000);
-    
-    setTimeout(() => {
-      setTranscript((prev: string) => prev + `AI Dispatcher: I'm ready to hear your response. Please make sure your microphone is unmuted and speak clearly about your current status and location.\n\n`);
-    }, 10000);
-  };
-
-  const endCall = () => {
+  const endCall = async () => {
     try {
-      endPipecatCall();
-    } catch (error) {
-      console.warn('Error ending call:', error);
-    } finally {
       setIsCallInProgress(false);
+      
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+      
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+
+      const callTranscript = transcript || '';
+      const summary = analyzeCallTranscript(callTranscript);
+
+      const callResult: CallResult = {
+        id: Date.now().toString(),
+        callRequest: callData,
+        transcript: callTranscript,
+        summary: summary,
+        timestamp: new Date().toISOString(),
+        duration: callDurationLocal
+      };
+
+      try {
+        const response = await fetch('/api/calls/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            callId: callResult.id,
+            duration: callDurationLocal,
+            transcript: callTranscript,
+            summary: summary
+          })
+        });
+        
+        if (!response.ok) {
+        }
+      } catch (saveError) {
+      }
+
+      onCallEnd(callResult);
+      
+    } catch (error) {
     }
   };
+
+  const analyzeCallTranscript = (transcript: string) => {
+    const lowerTranscript = transcript.toLowerCase();
+    
+    let call_outcome = 'completed';
+    let driver_status = 'checked_in';
+    let current_location = 'unknown';
+    let eta = 'unknown';
+    let delay_reason = '';
+    let unloading_status = 'in_progress';
+    
+    const emergencyKeywords = ['emergency', 'accident', 'help', 'stuck', 'breakdown', 'injured'];
+    const hasEmergency = emergencyKeywords.some(keyword => lowerTranscript.includes(keyword));
+    
+    if (hasEmergency) {
+      call_outcome = 'emergency';
+      driver_status = 'emergency';
+    }
+    
+    const delayKeywords = ['late', 'delay', 'traffic', 'behind schedule', 'running late'];
+    if (delayKeywords.some(keyword => lowerTranscript.includes(keyword))) {
+      delay_reason = 'traffic_delay';
+    }
+    
+    const locationMatch = transcript.match(/(?:at|near|on)\s+([A-Za-z0-9\s]+?)(?:\s|$|,|\.|;)/i);
+    if (locationMatch) {
+      current_location = locationMatch[1].trim();
+    }
+    
+    return {
+      call_outcome,
+      driver_status,
+      current_location,
+      eta,
+      delay_reason,
+      unloading_status,
+      pod_reminder_acknowledged: false
+    };
+  };
+
+  const handleToggleMute = () => {
+    setIsMuted(!isMuted);
+    if (recognitionRef.current) {
+      if (isMuted) {
+        recognitionRef.current.start();
+      } else {
+        recognitionRef.current.stop();
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto">
+        {/* Header */}
         <div className="mb-6">
           <button
             onClick={onBack}
@@ -125,6 +316,7 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
           </p>
         </div>
 
+        {/* Call Setup Form */}
         {!isCallInProgress && !isConnected && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Start Call</h2>
@@ -156,114 +348,152 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
               </div>
             </div>
             
-            <button
+            <Button
               onClick={startCall}
-              disabled={isLoading || !callData.driverName || !callData.loadNumber}
+              disabled={!callData.driverName || !callData.loadNumber}
               className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Phone className="w-5 h-5" />
-              {isLoading ? 'Connecting...' : 'Start PIPECAT Call'}
-            </button>
+              Start PIPECAT Call
+            </Button>
           </div>
         )}
 
-        {(isCallInProgress || isConnected) && (
+        {/* Active Call Interface */}
+        {isCallInProgress && (
           <div className="bg-white rounded-lg shadow-md p-6">
+            {/* Call Status Header */}
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
-                <div className={`w-4 h-4 rounded-full ${isConnected ? 'bg-green-500' : isLoading ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
+                <div className={`w-4 h-4 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
                 <span className="font-medium">
-                  {isConnected ? 'Connected' : isLoading ? 'Connecting...' : 'Disconnected'}
+                  {isConnected ? 'Connected' : 'Connecting...'}
                 </span>
                 {isListening && (
                   <div className="flex items-center gap-2 text-green-600">
                     <Mic className="w-4 h-4 animate-pulse" />
-                    <span className="text-sm">Listening...</span>
+                    <span className="text-sm font-medium">Listening...</span>
                   </div>
                 )}
               </div>
               
               <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-600">
-                  {formatDuration(callDuration)}
+                <span className="text-lg font-mono">
+                  {formatDuration(callDurationLocal)}
                 </span>
                 
                 <button
-                  onClick={() => setIsMuted(!isMuted)}
+                  onClick={handleToggleMute}
                   className={`p-2 rounded-full ${isMuted ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
                 >
                   {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                 </button>
                 
-                <button
+                <Button
                   onClick={endCall}
                   className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 flex items-center gap-2"
                 >
                   <PhoneOff className="w-4 h-4" />
                   End Call
-                </button>
+                </Button>
               </div>
             </div>
 
+            {/* Volume Level Indicator */}
+            <div className="mb-4 flex items-center justify-center space-x-2">
+              <Volume2 className="w-4 h-4 text-gray-600" />
+              <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-green-500 transition-all duration-100"
+                  style={{ width: `${volumeLevel}%` }}
+                />
+              </div>
+              <span className="text-sm text-gray-600">{volumeLevel}%</span>
+            </div>
+
+            {/* Live Transcript */}
             <div className="border rounded-lg p-4 mb-6">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                 Live Transcript
                 {isListening && <span className="text-green-600 text-sm">(🎤 Microphone Active)</span>}
               </h3>
               <div className="h-96 overflow-y-auto bg-gray-50 p-4 rounded border font-mono text-sm whitespace-pre-wrap">
-                {transcript || 'Conversation will appear here...\n\nMake sure to allow microphone access when prompted.\nSpeak clearly after the dispatcher asks a question.'}
+                {transcript && (
+                  <div className="space-y-2">
+                    <div className="text-gray-900">
+                      <span className="font-medium text-blue-600">Conversation:</span> {transcript}
+                    </div>
+                  </div>
+                )}
+                
+                {!transcript && (
+                  <div className="text-gray-500 text-center py-8">
+                    {isListening ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <LoadingSpinner size="sm" />
+                        <span>Waiting for speech...</span>
+                      </div>
+                    ) : (
+                      'Start speaking to see live transcript'
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* Error Display */}
             {pipecatError && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-6">
+              <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
                 <div className="flex">
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-yellow-800">Connection Issue</h3>
+                    <h3 className="text-sm font-medium text-yellow-800">Voice Processing Issue</h3>
                     <div className="mt-2 text-sm text-yellow-700">
                       <p>{pipecatError}</p>
-                      <p className="mt-1">The call is running in demo mode with voice recognition active.</p>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-              <h4 className="font-medium text-blue-900 mb-3">Test Scenarios</h4>
-              <p className="text-sm text-blue-700 mb-3">Use these buttons to simulate driver responses, or speak into your microphone:</p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <button
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                >
-                  🚛 Normal Check-in
-                </button>
-                <button
-                  className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700"
-                >
-                  ⏰ Delay Report
-                </button>
-                <button
-                  className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                >
-                  🚨 Emergency
-                </button>
+            {/* Call Info Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-lg font-bold text-gray-900">{formatDuration(callDurationLocal)}</div>
+                <div className="text-sm text-gray-600">Duration</div>
               </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-lg font-bold text-gray-900">
+                  {isConnected ? 'Connected' : 'Connecting'}
+                </div>
+                <div className="text-sm text-gray-600">Status</div>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-lg font-bold text-gray-900">WEB</div>
+                <div className="text-sm text-gray-600">Call Type</div>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-lg font-bold text-gray-900">
+                  {transcript ? transcript.split(' ').length : 0}
+                </div>
+                <div className="text-sm text-gray-600">Words</div>
+              </div>
+            </div>
+
+            {/* Test Scenarios */}
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+              <h4 className="font-medium text-blue-900 mb-3">Voice Interaction Guide</h4>
+              <ul className="text-sm text-blue-700 space-y-1">
+                <li>• <strong>Speak clearly</strong> into your microphone - the AI dispatcher will respond automatically</li>
+                <li>• <strong>Live transcription</strong> shows your conversation in real-time</li>
+                <li>• <strong>Voice recognition</strong> converts your speech to text instantly</li>
+                <li>• <strong>Real dispatcher behavior</strong> - professional, context-aware responses</li>
+              </ul>
             </div>
           </div>
         )}
-
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="font-semibold text-blue-900 mb-2">How PIPECAT Voice Works:</h3>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>• <strong>Allow microphone access</strong> when prompted by your browser</li>
-            <li>• <strong>Speak clearly</strong> into your microphone - the AI dispatcher will respond automatically</li>
-            <li>• <strong>Live transcription</strong> shows your conversation in real-time</li>
-            <li>• <strong>Voice recognition</strong> converts your speech to text and triggers AI responses</li>
-            <li>• <strong>Test scenarios</strong> simulate common logistics conversations</li>
-            <li>• <strong>Real dispatcher behavior</strong> - professional, context-aware responses</li>
-          </ul>
-        </div>
       </div>
     </div>
   );

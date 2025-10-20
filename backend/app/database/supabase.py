@@ -62,8 +62,6 @@ class SupabaseClient:
             
             return True
     
-    # PIPECAT Analytics Methods
-    
     async def create_rtvi_event(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new RTVI event for analytics"""
         result = self.client.table("rtvi_events").insert(event_data).execute()
@@ -115,54 +113,72 @@ class SupabaseClient:
                 result = self.client.rpc("compute_daily_analytics").execute()
             return True
         except Exception as e:
-            print(f"Error computing daily analytics: {e}")
             return False
     
-    async def get_dashboard_metrics(self, days: int = 30) -> Dict[str, Any]:
+    def get_dashboard_metrics(self, days: int = 30) -> Dict[str, Any]:
         """Get aggregated metrics for dashboard display"""
         try:
-            # Get recent call metrics
-            result = self.client.table("call_metrics").select("*").gte("start_time", f"now() - interval '{days} days'").execute()
-            call_metrics = result.data
+            from datetime import datetime, timedelta
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            cutoff_iso = cutoff_date.isoformat()
             
-            # Get recent RTVI events
-            events_result = self.client.table("rtvi_events").select("*").gte("timestamp", f"now() - interval '{days} days'").execute()
-            rtvi_events = events_result.data
+            result = self.client.table("call_results").select("*").gte("timestamp", cutoff_iso).execute()
+            call_results = result.data
             
-            # Calculate aggregated metrics
-            total_calls = len(call_metrics)
-            avg_duration = sum(float(m.get('duration_seconds', 0)) for m in call_metrics) / total_calls if total_calls > 0 else 0
-            total_interruptions = sum(int(m.get('interruption_count', 0)) for m in call_metrics)
-            total_tokens = sum(int(m.get('total_tokens', 0)) for m in call_metrics)
+            if len(call_results) == 0:
+                all_result = self.client.table("call_results").select("*").execute()
+                all_calls = all_result.data
             
-            # Count outcomes
+            total_calls = len(call_results)
+            total_duration = 0
+            total_tokens = 0
+            total_interruptions = 0
+            emergency_calls = 0
             outcomes = {}
-            for metric in call_metrics:
-                outcome = metric.get('final_outcome', 'Unknown')
+            
+            for call in call_results:
+                duration = call.get('duration', 0)
+                total_duration += duration
+                
+                summary = call.get('summary', {})
+                tokens = summary.get('tokens_used', 0)
+                if isinstance(tokens, int):
+                    total_tokens += tokens
+                
+                # Interruptions (if available in summary)
+                interruptions = summary.get('interruptions', 0)
+                if isinstance(interruptions, int):
+                    total_interruptions += interruptions
+                
+                # Emergency detection
+                conversation_state = call.get('conversation_state', {})
+                if conversation_state.get('emergency_detected', False):
+                    emergency_calls += 1
+                
+                # Call outcomes
+                outcome = summary.get('call_outcome', 'Unknown')
                 outcomes[outcome] = outcomes.get(outcome, 0) + 1
             
-            # Count event types
-            event_types = {}
-            for event in rtvi_events:
-                event_type = event.get('event_type', 'unknown')
-                event_types[event_type] = event_types.get(event_type, 0) + 1
+            # Calculate averages
+            avg_duration = total_duration / total_calls if total_calls > 0 else 0
+            avg_tokens = total_tokens / total_calls if total_calls > 0 else 0
+            successful_calls = total_calls - emergency_calls
             
             return {
                 "total_calls": total_calls,
                 "avg_call_duration": round(avg_duration, 2),
                 "total_interruptions": total_interruptions,
                 "total_tokens": total_tokens,
-                "avg_tokens_per_call": round(total_tokens / total_calls, 2) if total_calls > 0 else 0,
+                "avg_tokens_per_call": round(avg_tokens, 2),
                 "outcomes": outcomes,
-                "event_types": event_types,
-                "emergency_calls": outcomes.get("Emergency Escalation", 0),
-                "successful_calls": total_calls - outcomes.get("Unknown", 0)
+                "event_types": {},  # This would need RTVI events
+                "emergency_calls": emergency_calls,
+                "successful_calls": successful_calls
             }
             
         except Exception as e:
-            print(f"Error getting dashboard metrics: {e}")
             return {
-                "total_calls": 0,
+                "total_calls": -999,
                 "avg_call_duration": 0,
                 "total_interruptions": 0,
                 "total_tokens": 0,

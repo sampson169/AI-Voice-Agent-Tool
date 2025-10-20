@@ -73,7 +73,6 @@ export const usePipecat = () => {
         webSocketRef.current.close();
         webSocketRef.current = null;
       } catch (error) {
-        // Ignore cleanup errors
       }
     }
   }, []);
@@ -84,7 +83,6 @@ export const usePipecat = () => {
         mediaRecorderRef.current.stop();
         mediaRecorderRef.current = null;
       } catch (error) {
-        // Ignore cleanup errors
       }
     }
     
@@ -98,7 +96,6 @@ export const usePipecat = () => {
         speechRecognitionRef.current.stop();
         speechRecognitionRef.current = null;
       } catch (error) {
-        // Ignore cleanup errors
       }
     }
     
@@ -106,7 +103,6 @@ export const usePipecat = () => {
   }, []);
 
   const setupSpeechRecognition = useCallback(() => {
-    // Check if browser supports speech recognition
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
@@ -123,9 +119,6 @@ export const usePipecat = () => {
 
     recognition.onstart = () => {
       setIsListening(true);
-      if (isDebugMode()) {
-        console.log('Speech recognition started');
-      }
     };
 
     recognition.onresult = (event: any) => {
@@ -141,7 +134,6 @@ export const usePipecat = () => {
       if (finalTranscript.trim()) {
         setTranscript(prev => prev + `Driver: ${finalTranscript.trim()}\n\n`);
         
-        // Simulate AI response after driver speaks
         setTimeout(() => {
           const responses = [
             "Got it, thank you for that update.",
@@ -169,12 +161,10 @@ export const usePipecat = () => {
     recognition.onend = () => {
       setIsListening(false);
       if (isConnected) {
-        // Restart recognition if still connected
         setTimeout(() => {
           try {
             recognition.start();
           } catch (error) {
-            // Ignore restart errors
           }
         }, 100);
       }
@@ -185,24 +175,17 @@ export const usePipecat = () => {
 
   const startVoiceCapture = useCallback(async () => {
     try {
-      // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Setup speech recognition
       const recognition = setupSpeechRecognition();
       if (recognition) {
         speechRecognitionRef.current = recognition;
         recognition.start();
       }
 
-      // Setup media recorder (for future use with actual PIPECAT backend)
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
-
-      if (isDebugMode()) {
-        console.log('Voice capture started successfully');
-      }
 
     } catch (error: any) {
       setError(`Voice capture failed: ${error.message}`);
@@ -217,18 +200,10 @@ export const usePipecat = () => {
       setError(null);
       setIsLoading(true);
       
-      // Start voice capture for microphone input
       await startVoiceCapture();
       
-      // For PIPECAT demo mode, we'll simulate the connection
-      // In production, this would connect to the actual PIPECAT WebSocket
       if (webCallLink.includes('your-pipecat-server.com')) {
-        // Demo mode - simulate connection
-        if (isDebugMode()) {
-          console.log('PIPECAT Demo Mode: Simulating connection to', webCallLink);
-        }
         
-        // Simulate connection delay
         setTimeout(() => {
           setIsConnected(true);
           setIsLoading(false);
@@ -239,15 +214,11 @@ export const usePipecat = () => {
         return;
       }
 
-      // Real PIPECAT connection (for production)
       cleanupWebSocket();
       
       const ws = new WebSocket(webCallLink);
       
       ws.onopen = () => {
-        if (isDebugMode()) {
-          console.log('PIPECAT WebSocket connected');
-        }
         handleConnected();
       };
 
@@ -281,7 +252,6 @@ export const usePipecat = () => {
 
       webSocketRef.current = ws;
 
-      // Connection timeout
       connectionTimeoutRef.current = window.setTimeout(() => {
         if (isLoading && !isConnected) {
           setError('Connection timeout - switching to demo mode');
@@ -307,7 +277,6 @@ export const usePipecat = () => {
       stopTimer();
       clearConnectionTimeout();
     } catch (error: any) {
-      // Ignore cleanup errors
     }
   }, [cleanupWebSocket, cleanupAudio, stopTimer, clearConnectionTimeout]);
 

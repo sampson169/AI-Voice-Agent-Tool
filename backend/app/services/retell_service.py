@@ -11,13 +11,7 @@ from typing import Dict, Any, Optional
 from app.models.schemas import CallRequest
 import warnings
 
-# Issue deprecation warning
-warnings.warn(
-    "retell_service.py is deprecated and will be removed in a future version. "
-    "Use PIPECAT service instead.",
-    DeprecationWarning,
-    stacklevel=2
-)
+
 
 class RetellService:
     def __init__(self):

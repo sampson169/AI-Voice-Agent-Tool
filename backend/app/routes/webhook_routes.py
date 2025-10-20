@@ -12,13 +12,7 @@ import re
 from typing import Dict, Any
 import warnings
 
-# Issue deprecation warning
-warnings.warn(
-    "webhook_routes.py is deprecated and will be removed in a future version. "
-    "Use PIPECAT voice agent instead.",
-    DeprecationWarning,
-    stacklevel=2
-)
+
 
 router = APIRouter(prefix="/api/webhook", tags=["webhook", "deprecated"])
 
@@ -240,7 +234,6 @@ async def process_retell_webhook(webhook_data: dict) -> dict:
         }
         
         await supabase_client.create_call_result(call_data)
-        print(f"📝 Created new call data for testing: {call_id}")
     
     call_request = call_data.get("call_request", {})
     conversation_state = call_data.get("conversation_state", {"phase": "greeting", "emergency_detected": False, "scenario_type": "general"})
@@ -252,16 +245,10 @@ async def process_retell_webhook(webhook_data: dict) -> dict:
     summary = extract_structured_data(transcript, call_request, conversation_state)
     
     if emergency_detected and not conversation_state.get("emergency_detected", False):
-        print(f"🚨 EMERGENCY ACTIVATED: Setting emergency mode")
         conversation_state["emergency_detected"] = True
         conversation_state["phase"] = "emergency"
     elif not conversation_state.get("emergency_detected", False):
         conversation_state = update_conversation_state(current_utterance, transcript, conversation_state, summary)
-    
-    print(f"📊 Final Conversation State:")
-    print(f"   Phase: {conversation_state.get('phase')}")
-    print(f"   Emergency Detected: {conversation_state.get('emergency_detected')}")
-    print(f"   Scenario Type: {scenario_type}")
     
     updated_data = {
         "transcript": transcript,
@@ -282,16 +269,10 @@ def detect_emergency(current_utterance: str, transcript: str) -> bool:
     
     text_to_check = f"{current_utterance} {transcript}".lower()
     
-    print(f"🔍 Emergency Detection Debug:")
-    print(f"   Current utterance: '{current_utterance}'")
-    print(f"   Text to check: '{text_to_check}'")
-    
     for phrase in emergency_phrases:
         if phrase in text_to_check:
-            print(f"   ⚠️  EMERGENCY DETECTED: Found '{phrase}' in text")
             return True
     
-    print(f"   ✅ No emergency keywords found")
     return False
 
 def update_conversation_state(current_utterance: str, transcript: str, 
@@ -500,12 +481,6 @@ def generate_conversation_response(utterance: str, transcript: str, call_data: d
         return generate_general_response(utterance, transcript, call_request, summary, conversation_state)
 
 def handle_emergency_response(summary: dict, current_phase: str, scenario_type: str) -> dict:
-    
-    print(f"🚨 Emergency Response Handler:")
-    print(f"   Phase: {current_phase}")
-    print(f"   Summary: {summary}")
-    print(f"   Scenario Type: {scenario_type}")
-    
     if current_phase == "emergency" and not summary.get("safety_status"):
         return {
             "response": "I understand there may be an emergency situation. First and most importantly - is everyone safe? Are there any injuries that need immediate medical attention?",

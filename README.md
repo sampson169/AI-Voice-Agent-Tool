@@ -1,8 +1,321 @@
 
+# 🎯 AI Voice Agent Tool - PIPECAT Edition
 
-# AI Voice Agent Tool - Logistics Dispatcher
+A comprehensive logistics voice agent system built with **PIPECAT framework** for self-hosted, real-time voice interactions. This tool enables logistics dispatchers to conduct professional voice calls with truck drivers for status updates and emergency handling.
 
-A comprehensive web application for configuring, testing, and analyzing AI voice agents specialized in logistics dispatch operations. This tool allows non-technical administrators to configure adaptive AI voice agents that handle truck driver check-ins and emergency situations with professional, human-like conversations.
+## 🚀 Features
+
+### Core Functionality
+- **PIPECAT Voice Framework**: Self-hosted voice agent with real-time processing
+- **Agent Configuration UI**: Intuitive interface for conversation prompts and scenarios
+- **Real-time Voice Calls**: Web-based and phone call capabilities
+- **Live Transcription**: Real-time speech-to-text with Web Speech API
+- **Analytics Dashboard**: Comprehensive call metrics and trends
+- **Emergency Detection**: Automatic emergency protocol handling
+
+### Advanced Voice Features
+- **Live Speech Recognition**: Browser-based voice input processing
+- **Intelligent Responses**: Context-aware AI dispatcher conversations
+- **Microphone Controls**: Mute/unmute with visual feedback
+- **Call Duration Tracking**: Real-time call timing
+- **Professional Voice Scenarios**: Logistics-specific conversation templates
+
+## 🏗️ Technology Stack
+
+- **Voice Engine**: PIPECAT (Self-hosted voice agent framework)
+- **Frontend**: React 18 + TypeScript + Tailwind CSS + Vite
+- **Backend**: FastAPI + Python 3.10+
+- **Database**: Supabase (PostgreSQL)
+- **Real-time Processing**: WebSocket connections
+- **Speech Recognition**: Web Speech API
+- **Analytics**: RTVI events tracking
+
+## 📁 Project Structure
+
+```
+voice-agent-tool/
+├── backend/                    # FastAPI Backend
+│   ├── main.py                # Application entry point
+│   ├── requirements.txt       # Python dependencies
+│   ├── database_setup.sql     # Database schema
+│   └── app/
+│       ├── core/              # Configuration & settings
+│       ├── database/          # Supabase integration
+│       ├── models/            # Pydantic schemas
+│       ├── pipecat/           # PIPECAT voice service
+│       ├── routes/            # API endpoints
+│       │   ├── agent_routes.py
+│       │   ├── call_routes.py
+│       │   ├── analytics_routes.py
+│       │   └── webhook_routes.py (deprecated)
+│       └── services/          # Business logic
+│
+├── frontend/                  # React Frontend  
+│   ├── src/
+│   │   ├── components/       # UI components
+│   │   │   ├── AgentConfiguration.tsx
+│   │   │   ├── CallInterface.tsx
+│   │   │   ├── CallResults.tsx
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── analytics/    # Analytics components
+│   │   │   └── ui/           # Reusable UI components
+│   │   ├── hooks/            # Custom React hooks
+│   │   │   ├── usePipecat.ts # PIPECAT integration
+│   │   │   └── useRetell.ts  # Legacy (deprecated)
+│   │   ├── types/            # TypeScript definitions
+│   │   └── utils/            # API client & utilities
+│   ├── package.json
+│   └── vite.config.ts
+│
+└── README.md                 # This file
+```
+
+## 🔧 Prerequisites
+
+- **Python 3.10+** - [Download Python](https://www.python.org/downloads/)
+- **Node.js 18+** - [Download Node.js](https://nodejs.org/)
+- **Supabase Account** - [Sign up](https://supabase.com/)
+- **OpenAI API Key** - [Get API Key](https://platform.openai.com/api-keys)
+
+## 🚀 Quick Start
+
+### 1. Clone Repository
+```bash
+git clone https://github.com/sampson169/AI-Voice-Agent-Tool.git
+cd AI-Voice-Agent-Tool
+```
+
+### 2. Backend Setup
+
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+### 3. Database Setup
+
+1. **Create Supabase Project** at [supabase.com](https://supabase.com)
+2. **Copy credentials** from Settings → API
+3. **Run database schema** in Supabase SQL Editor:
+   ```sql
+   -- Copy and paste entire contents of backend/database_setup.sql
+   ```
+
+### 4. Frontend Setup
+
+```bash
+cd ../frontend
+
+# Install dependencies  
+npm install
+
+# Start development server
+npm run dev
+```
+
+### 5. Start Backend
+
+```bash
+cd ../backend
+
+# Start FastAPI server
+python main.py
+```
+
+## ⚙️ Configuration
+
+### Backend Environment (.env)
+
+```env
+# Required
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_anon_key
+OPENAI_API_KEY=your_openai_api_key
+
+# Optional PIPECAT Services
+CARTESIA_API_KEY=your_cartesia_key  # Advanced TTS
+DEEPGRAM_API_KEY=your_deepgram_key  # Advanced STT
+
+# Server Settings
+HOST=localhost
+PORT=8000
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:5174
+```
+
+### Frontend Configuration
+
+The frontend automatically connects to `http://localhost:8000`. To change the backend URL, update `src/utils/config.ts`.
+
+## 🎯 Key Features
+
+### PIPECAT Voice Integration
+- **Self-hosted Voice Agent**: No dependency on external voice services
+- **Real-time Processing**: Low-latency voice interactions
+- **Web Speech API**: Browser-based speech recognition
+- **Professional Conversations**: Logistics-specific scenarios
+
+### Analytics Dashboard
+- **Call Metrics**: Duration, tokens, interruptions
+- **Outcome Tracking**: Status updates, emergencies, confirmations
+- **Trends Analysis**: Daily/weekly performance charts
+- **RTVI Events**: Detailed interaction tracking
+
+### Emergency Handling
+- **Automatic Detection**: Emergency phrase recognition
+- **Priority Response**: Safety-first conversation flow
+- **Escalation Protocol**: Human dispatcher handoff
+- **Location Tracking**: Highway/mile marker identification
+
+## 📊 API Documentation
+
+Once running, access interactive API docs at:
+- **Swagger UI**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/
+
+### Key Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | API status |
+| `POST` | `/api/calls/start` | Start PIPECAT call |
+| `GET` | `/api/calls/{id}/result` | Get call results |
+| `GET` | `/api/analytics/dashboard` | Dashboard metrics |
+| `GET` | `/api/analytics/trends` | Analytics trends |
+| `GET` | `/api/agents/` | List agent configs |
+
+## 🔧 Development
+
+### Adding New Features
+
+1. **Models**: Define schemas in `app/models/schemas.py`
+2. **Database**: Add operations to `app/database/supabase.py`
+3. **Services**: Implement logic in `app/services/`
+4. **Routes**: Create endpoints in `app/routes/`
+5. **Frontend**: Add components in `src/components/`
+
+### PIPECAT Integration
+
+The PIPECAT service (`app/pipecat/pipecat_service.py`) handles:
+- Voice call initialization
+- Speech recognition setup
+- AI response generation
+- Call session management
+
+### Analytics System
+
+Analytics data flows through:
+1. **RTVI Events**: Real-time interaction tracking
+2. **Call Metrics**: Aggregated call statistics
+3. **Daily Analytics**: Computed daily summaries
+4. **Frontend Charts**: Real-time dashboard updates
+
+## 🧪 Testing
+
+### Backend Testing
+```bash
+cd backend
+
+# Test API endpoints
+curl -X GET http://localhost:8000/
+curl -X GET http://localhost:8000/api/analytics/dashboard?days=30
+
+# Health check
+curl -X GET http://localhost:8000/api/analytics/health
+```
+
+### Frontend Testing
+```bash
+cd frontend
+
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**Backend won't start**
+- Check Python version (3.10+ required)
+- Verify virtual environment is activated
+- Ensure all dependencies are installed
+
+**Database connection failed**
+- Verify Supabase credentials in `.env`
+- Check internet connection
+- Ensure database schema is installed
+
+**Voice not working**
+- Allow microphone access in browser
+- Check CORS settings in backend
+- Verify OpenAI API key is valid
+
+**Analytics not loading**
+- Ensure database tables exist (run `database_setup.sql`)
+- Check backend logs for errors
+- Verify API endpoints are accessible
+
+### Getting Help
+
+1. Check the **terminal logs** for error details
+2. Visit `/docs` for API documentation
+3. Test `/api/analytics/health` for service status
+4. Review browser console for frontend errors
+
+## 🔄 Migration from Retell AI
+
+This project has been migrated from Retell AI to PIPECAT for better control and self-hosting capabilities:
+
+### What Changed
+- ✅ **Voice Engine**: Retell AI → PIPECAT
+- ✅ **Hosting**: External → Self-hosted
+- ✅ **Analytics**: Enhanced RTVI tracking
+- ✅ **Real-time**: Web Speech API integration
+- ✅ **Database**: Extended schema for analytics
+
+### Deprecated Components
+- `useRetell.ts` hook (replaced by `usePipecat.ts`)
+- `webhook_routes.py` (PIPECAT uses direct integration)
+- External voice service dependencies
+
+## 📝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+---
+
+**🎉 Happy Voice Dispatching!** 
+
+Built with ❤️ using PIPECAT, React, and FastAPI
 
 ## 🚀 Features
 

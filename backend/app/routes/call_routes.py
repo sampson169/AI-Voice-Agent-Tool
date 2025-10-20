@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from app.models.schemas import CallRequest, CallResult
 from app.pipecat.pipecat_service import pipecat_service
-from app.services.retell_service import retell_service  # Keep for backwards compatibility
+from app.services.retell_service import retell_service
 from app.database.supabase import supabase_client
 import uuid
 import logging
@@ -56,7 +56,6 @@ async def start_call(call_request: CallRequest):
                 }
                 await supabase_client.create_agent_config(default_agent)
         
-        # Use PIPECAT instead of Retell
         logger.info(f"Creating PIPECAT call of type: {call_request.call_type}")
         if call_request.call_type == "phone":
             pipecat_response = await pipecat_service.create_phone_call(call_request)
@@ -70,7 +69,7 @@ async def start_call(call_request: CallRequest):
             
             call_data = {
                 "id": call_id,
-                "retell_call_id": pipecat_call_id,  # Keep field name for compatibility
+                "retell_call_id": pipecat_call_id,
                 "call_request": call_request.dict(),
                 "transcript": "",
                 "summary": {},
@@ -79,7 +78,7 @@ async def start_call(call_request: CallRequest):
                     "emergency_detected": False,
                     "clarification_attempts": 0,
                     "scenario_type": getattr(call_request, 'scenario_type', 'general'),
-                    "pipecat_call": True,  # Mark as PIPECAT call in conversation state
+                    "pipecat_call": True,
                     "analytics_enabled": True
                 },
                 "timestamp": datetime.utcnow().isoformat(),
@@ -87,6 +86,18 @@ async def start_call(call_request: CallRequest):
             }
             
             await supabase_client.create_call_result(call_data)
+            
+            initial_metrics = {
+                "call_id": call_id,
+                "start_time": datetime.utcnow().isoformat(),
+                "duration_seconds": 0,
+                "total_tokens": 0,
+                "interruption_count": 0,
+                "outcome": "In Progress",
+                "emergency_detected": False
+            }
+            
+            await supabase_client.create_call_metrics(initial_metrics)
             
             response = {
                 "call_id": call_id,
@@ -109,6 +120,49 @@ async def start_call(call_request: CallRequest):
     except Exception as e:
         logger.error(f"Error starting call: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error starting call: {str(e)}")
+
+@router.post("/complete")
+async def complete_call(completion_data: dict):
+    """Complete a call and update its data"""
+    try:
+        call_id = completion_data.get("callId")
+        duration = completion_data.get("duration", 0)
+        transcript = completion_data.get("transcript", "")
+        summary = completion_data.get("summary", {})
+        
+        if not call_id:
+            raise HTTPException(status_code=400, detail="Call ID is required")
+        
+        updated_data = {
+            "duration": duration,
+            "transcript": transcript,
+            "summary": summary
+        }
+        
+        result = await supabase_client.update_call_result(call_id, updated_data)
+        
+        if result:
+            metrics_data = {
+                "call_id": call_id,
+                "end_time": datetime.utcnow().isoformat(),
+                "duration_seconds": duration,
+                "total_tokens": summary.get("tokens_used", 0),
+                "interruption_count": summary.get("interruptions", 0),
+                "outcome": summary.get("call_outcome", "Unknown"),
+                "emergency_detected": summary.get("emergency_type") is not None
+            }
+            
+            await supabase_client.create_call_metrics(metrics_data)
+            
+            return {"status": "success", "call_id": call_id}
+        else:
+            raise HTTPException(status_code=404, detail="Call not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing call: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error completing call: {str(e)}")
 
 @router.get("/{call_id}/result", response_model=CallResult)
 async def get_call_result(call_id: str):

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 async def get_dashboard_metrics(days: int = Query(default=30, ge=1, le=365)):
     """Get dashboard metrics for the specified number of days"""
     try:
-        metrics = await supabase_client.get_dashboard_metrics(days)
+        metrics = supabase_client.get_dashboard_metrics(days)
         return {
             "status": "success",
             "data": metrics,
@@ -81,7 +81,6 @@ async def get_call_metrics(call_id: str):
         if not metrics:
             raise HTTPException(status_code=404, detail="Call metrics not found")
         
-        # Also get events for this call
         events = await supabase_client.get_rtvi_events(call_id)
         
         return {
@@ -104,7 +103,6 @@ async def get_analytics_aggregations(
 ):
     """Get analytics aggregations for a date range"""
     try:
-        # Default to last 30 days if no dates provided
         if not start_date or not end_date:
             end_date = datetime.utcnow().date().isoformat()
             start_date = (datetime.utcnow().date() - timedelta(days=30)).isoformat()
@@ -149,10 +147,9 @@ async def compute_daily_analytics(
 async def get_call_outcomes_distribution(days: int = Query(default=30, ge=1, le=365)):
     """Get distribution of call outcomes over the specified period"""
     try:
-        metrics = await supabase_client.get_dashboard_metrics(days)
+        metrics = supabase_client.get_dashboard_metrics(days)
         outcomes = metrics.get("outcomes", {})
         
-        # Calculate percentages
         total_calls = sum(outcomes.values())
         outcome_distribution = []
         
@@ -178,18 +175,14 @@ async def get_call_outcomes_distribution(days: int = Query(default=30, ge=1, le=
 async def get_interruption_analysis(days: int = Query(default=30, ge=1, le=365)):
     """Get interruption analysis data"""
     try:
-        # Get calls with interruption data
         summary = await supabase_client.get_analytics_summary(limit=1000)
         
-        # Filter by date range
         cutoff_date = datetime.utcnow() - timedelta(days=days)
         recent_calls = [
             call for call in summary 
             if call.get('start_time') and 
             datetime.fromisoformat(call['start_time'].replace('Z', '+00:00')) >= cutoff_date
         ]
-        
-        # Analyze interruptions
         total_calls = len(recent_calls)
         total_interruptions = sum(call.get('interruption_count', 0) for call in recent_calls)
         calls_with_interruptions = len([call for call in recent_calls if call.get('interruption_count', 0) > 0])
@@ -214,7 +207,7 @@ async def get_interruption_analysis(days: int = Query(default=30, ge=1, le=365))
 async def get_token_usage_analysis(days: int = Query(default=30, ge=1, le=365)):
     """Get token usage analysis"""
     try:
-        metrics = await supabase_client.get_dashboard_metrics(days)
+        metrics = supabase_client.get_dashboard_metrics(days)
         
         return {
             "status": "success",
@@ -222,7 +215,7 @@ async def get_token_usage_analysis(days: int = Query(default=30, ge=1, le=365)):
             "total_tokens": metrics.get("total_tokens", 0),
             "avg_tokens_per_call": metrics.get("avg_tokens_per_call", 0),
             "total_calls": metrics.get("total_calls", 0),
-            "estimated_cost": round(metrics.get("total_tokens", 0) * 0.0001, 4)  # Rough estimate
+            "estimated_cost": round(metrics.get("total_tokens", 0) * 0.0001, 4)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching token analysis: {str(e)}")
@@ -232,13 +225,10 @@ async def get_token_usage_analysis(days: int = Query(default=30, ge=1, le=365)):
 async def get_analytics_trends(days: int = Query(default=30, ge=7, le=365)):
     """Get analytics trends over time"""
     try:
-        # Get aggregations for the period
         end_date = datetime.utcnow().date().isoformat()
         start_date = (datetime.utcnow().date() - timedelta(days=days)).isoformat()
         
         aggregations = await supabase_client.get_analytics_aggregations(start_date, end_date)
-        
-        # Process trends
         trends = []
         for agg in sorted(aggregations, key=lambda x: x['date_range_start']):
             trends.append({
@@ -265,8 +255,7 @@ async def get_analytics_trends(days: int = Query(default=30, ge=7, le=365)):
 async def analytics_health_check():
     """Health check for analytics service"""
     try:
-        # Test database connection
-        test_metrics = await supabase_client.get_dashboard_metrics(1)
+        test_metrics = supabase_client.get_dashboard_metrics(1)
         
         return {
             "status": "healthy",
@@ -281,3 +270,47 @@ async def analytics_health_check():
             "database_connected": False,
             "error": str(e)
         }
+
+@router.get("/debug/metrics")
+async def debug_call_metrics():
+    """Debug endpoint to see raw call_metrics data"""
+    try:
+        dashboard_data = supabase_client.get_dashboard_metrics(1)
+        
+        result = supabase_client.client.table("call_metrics").select("*").execute()
+        return {
+            "status": "success",
+            "count": len(result.data),
+            "dashboard_total_calls": dashboard_data.get("total_calls", 0),
+            "raw_data": result.data[:3],
+            "dashboard_data": dashboard_data
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+@router.get("/debug/call-metrics")
+async def debug_call_metrics_table():
+    """Check what's in the call_metrics table specifically"""
+    try:
+        import traceback
+        
+        metrics_result = supabase_client.client.table("call_metrics").select("*").execute()
+        metrics_data = metrics_result.data
+        
+        results_result = supabase_client.client.table("call_results").select("*").execute()
+        results_data = results_result.data
+        
+        return {
+            "status": "success",
+            "call_metrics_count": len(metrics_data),
+            "call_results_count": len(results_data),
+            "call_metrics_sample": metrics_data[:3] if metrics_data else [],
+            "call_results_sample": results_data[:3] if results_data else [],
+            "explanation": "call_metrics is for analytics dashboard, call_results is where actual calls are stored"
+        }
+    except Exception as e:
+        import traceback
+        return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
