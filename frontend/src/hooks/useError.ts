@@ -37,7 +37,6 @@ export function useError(autoClearTimeout = 10000): UseErrorReturn {
         setRetryAction(undefined);
     }, []);
 
-    // Auto-clear errors after timeout for non-critical errors
     useEffect(() => {
         if (errorState.isVisible && errorState.error && errorState.error.severity !== 'critical') {
             const timer = setTimeout(clearError, autoClearTimeout);

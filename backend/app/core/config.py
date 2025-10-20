@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_title: str = "Voice Agent Tool"
-    app_version: str = "1.0.0"
+    app_version: str = "2.0.0"  # Updated for PIPECAT migration
     debug: bool = False
     
     host: str = "localhost"
@@ -13,14 +13,25 @@ class Settings(BaseSettings):
     reload: bool = True
     log_level: str = "INFO"
     
-    allowed_origins: str = "http://localhost:3000,http://localhost:5173"
+    allowed_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:5174"
     
     supabase_url: str = Field()
     supabase_key: str = Field()
-    retell_api_key: str = Field()
+    
+    # PIPECAT Configuration
+    openai_api_key: str = Field()
+    cartesia_api_key: Optional[str] = None
+    deepgram_api_key: Optional[str] = None
+    
+    # Legacy Retell Configuration (for backwards compatibility during migration)
+    retell_api_key: Optional[str] = None
     retell_base_url: str = "https://api.retellai.com/v2"
     retell_agent_id: Optional[str] = None
     retell_webhook_url: Optional[str] = None
+    
+    # PIPECAT specific settings
+    pipecat_enabled: bool = True
+    analytics_enabled: bool = True
 
     @property
     def origins_list(self) -> list[str]:

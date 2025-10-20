@@ -41,8 +41,12 @@ class CallRequest(BaseModel):
     driver_name: str = Field(..., description="Name of the driver")
     phone_number: Optional[str] = Field(None, description="Phone number for phone calls")
     load_number: str = Field(..., description="Load number for context")
-    agent_id: str = Field(..., description="Retell agent ID")
+    agent_id: str = Field(..., description="Agent ID")
     call_type: CallType = Field(..., description="Type of call")
+    scenario_type: Optional[str] = Field(default="general", description="Scenario type")
+    
+    class Config:
+        validate_by_name = True
 
 class RetellWebhook(BaseModel):
     call_id: str = Field(..., description="Retell call ID")

@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Phone, PhoneOff, Mic, MicOff, Volume2 } from 'lucide-react';
 import type { AgentConfig, CallRequest, CallResult } from '../types';
 import { api } from '../utils/api';
-import { useRetell } from '../hooks/useRetell';
+import { usePipecat } from '../hooks/usePipecat';
+import Button from './ui/Button';
+import LoadingSpinner from './ui/LoadingSpinner';
 
 interface CallInterfaceProps {
   agentConfig: AgentConfig;
@@ -13,19 +15,146 @@ interface CallInterfaceProps {
 const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, onBack }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isCallInProgress, setIsCallInProgress] = useState(false);
+  const [callDurationLocal, setCallDurationLocal] = useState(0);
+  const [volumeLevel, setVolumeLevel] = useState(0);
   const [callData, setCallData] = useState<CallRequest>({
     driverName: '',
     phoneNumber: '',
     loadNumber: '',
-    agentId: agentConfig.id || 'agent_fa51b58953a177984c9e173910',
-    callType: 'web',
+    agentId: agentConfig.id || '',
+    callType: 'web'
   });
-  const { isConnected, isLoading, transcript, error: retellError, callDuration, startCall: startRetellCall, endCall: endRetellCall, resetCall, setTranscript } = useRetell();
+
+  const { 
+    isConnected, 
+    isListening,
+    transcript, 
+    error: pipecatError, 
+    resetCall,
+    setTranscript
+  } = usePipecat();
+
+  const callTimerRef = useRef<number | null>(null);
+  const volumeAnalyzerRef = useRef<AnalyserNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const recognitionRef = useRef<any>(null);
+  useEffect(() => {
+    if (isCallInProgress && !callTimerRef.current) {
+      callTimerRef.current = window.setInterval(() => {
+        setCallDurationLocal(prev => prev + 1);
+      }, 1000);
+    } else if (!isCallInProgress && callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+
+    return () => {
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+      }
+    };
+  }, [isCallInProgress]);
+
+  const initializeAudioMonitoring = async () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      volumeAnalyzerRef.current = audioContextRef.current.createAnalyser();
+      source.connect(volumeAnalyzerRef.current);
+      
+      const dataArray = new Uint8Array(volumeAnalyzerRef.current.frequencyBinCount);
+      const updateVolume = () => {
+        if (volumeAnalyzerRef.current && isCallInProgress) {
+          volumeAnalyzerRef.current.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          setVolumeLevel(Math.floor((average / 255) * 100));
+          requestAnimationFrame(updateVolume);
+        }
+      };
+      updateVolume();
+
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.lang = 'en-US';
+
+        recognitionRef.current.onresult = (event: any) => {
+          let finalTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            }
+          }
+          if (finalTranscript) {
+            setTranscript(prev => prev + `Driver: ${finalTranscript}\n\n`);
+            
+            setTimeout(() => {
+              const response = generateDispatcherResponse(finalTranscript.toLowerCase(), callData);
+              setTranscript(prev => prev + `Dispatcher: ${response}\n\n`);
+            }, 1500);
+          }
+        };
+
+        recognitionRef.current.start();
+      }
+    } catch (error) {
+    }
+  };
+
+  const generateDispatcherResponse = (driverMessage: string, callData: CallRequest): string => {
+    const lowerMessage = driverMessage.toLowerCase();
+    const driverName = callData.driverName;
+    const loadNumber = callData.loadNumber;
+
+    if (lowerMessage.includes('emergency') || lowerMessage.includes('accident') || lowerMessage.includes('help')) {
+      return `${driverName}, I understand this is an emergency situation. I'm immediately escalating this to our emergency response team. Can you confirm your exact location and if anyone is injured? Stay on the line.`;
+    }
+
+    if (lowerMessage.includes('hear me') || lowerMessage.includes('hello') || lowerMessage.includes('can you') || lowerMessage.includes('hi ')) {
+      return `Yes ${driverName}, I can hear you clearly. Thanks for checking in on load ${loadNumber}. Can you please provide me with your current location and delivery status?`;
+    }
+
+    if (lowerMessage.includes('location') || lowerMessage.includes('mile') || lowerMessage.includes('highway') || lowerMessage.includes('exit')) {
+      return `Thank you for the location update, ${driverName}. What's your estimated time of arrival at the delivery location? Any delays or issues I should be aware of?`;
+    }
+
+    if (lowerMessage.includes('delay') || lowerMessage.includes('late') || lowerMessage.includes('traffic') || lowerMessage.includes('behind')) {
+      return `I understand there's a delay, ${driverName}. Please provide me with your updated ETA and the reason for the delay so I can update the customer accordingly.`;
+    }
+
+    if (lowerMessage.includes('delivered') || lowerMessage.includes('unload') || lowerMessage.includes('complete')) {
+      return `Excellent work, ${driverName}. Can you confirm the delivery is complete for load ${loadNumber}? Please remember to get the signed POD and send a photo when you have a chance.`;
+    }
+
+    if (lowerMessage.includes('fuel') || lowerMessage.includes('break') || lowerMessage.includes('rest')) {
+      return `Copy that, ${driverName}. Take the time you need for fuel and rest. Safety first. Please update me with your next ETA when you're back on the road.`;
+    }
+
+    if (lowerMessage.includes('weather') || lowerMessage.includes('snow') || lowerMessage.includes('rain') || lowerMessage.includes('road')) {
+      return `Thanks for the road condition update, ${driverName}. Drive safely and adjust your speed as needed. Let me know if conditions worsen or if you need to find a safe place to wait it out.`;
+    }
+
+    if (lowerMessage.includes('breakdown') || lowerMessage.includes('truck') || lowerMessage.includes('tire') || lowerMessage.includes('mechanical')) {
+      return `${driverName}, I understand you're having equipment issues. I'm contacting our maintenance team right away. Can you confirm your exact location and the nature of the problem?`;
+    }
+
+    if (lowerMessage.includes('no') || lowerMessage.includes('nothing') || lowerMessage.includes('assist') || lowerMessage.includes('can\'t help')) {
+      return `Understood, ${driverName}. Just checking in to make sure everything is going smoothly with load ${loadNumber}. Drive safe and don't hesitate to call if anything comes up.`;
+    }
+
+    return `Thanks for the update, ${driverName}. I've noted that information for load ${loadNumber}. Is there anything else you need assistance with regarding your delivery?`;
+  };
 
   const formatDuration = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const startCall = async () => {
@@ -34,444 +163,334 @@ const CallInterface: React.FC<CallInterfaceProps> = ({ agentConfig, onCallEnd, o
       return;
     }
 
-    if (isCallInProgress || isLoading) {
-      return;
-    }
+    if (isCallInProgress) return;
 
     try {
       setIsCallInProgress(true);
+      setCallDurationLocal(0);
       resetCall();
       
-      if (callData.callType === 'web') {
-        try {
-          await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch (mediaError: any) {
-          throw new Error(`Microphone access denied: ${mediaError.message}`);
-        }
-      }
-
-      const response = await api.startCall(callData);
+      await initializeAudioMonitoring();
       
-      if (response.access_token) {
-        await startRetellCall(response.access_token);
-      } else {
-        simulateCall();
-      }
+      await api.startCall(callData);
+      
+      setTranscript(`📞 PIPECAT Voice Agent Connected\n\nDispatcher: Good day ${callData.driverName}, this is dispatch calling about load ${callData.loadNumber}. I can hear you clearly. Please give me a status update on your delivery - what's your current location and how are things going?\n\n[🎤 Listening for your response]\n\n`);
       
     } catch (error: any) {
-      const errorMessage = error.message || 'Unknown error occurred';
-      alert(`Failed to start call: ${errorMessage}. Please check your configuration and try again.`);
+      alert(`Failed to start call: ${error.message}`);
       setIsCallInProgress(false);
-      console.error('Call start error:', error);
     }
   };
 
-  const simulateCall = () => {
-    setTimeout(() => {
-      setTranscript(prev => prev + `AI: Hi ${callData.driverName}! This is Dispatch with a check call on load ${callData.loadNumber}. Can you give me an update on your status?\n\n`);
-    }, 1000);
-  };
-
-  const simulateScenario = (scenarioType: 'normal' | 'delay' | 'emergency') => {
-    if (!isCallInProgress) return;
-
-    if (scenarioType === 'normal') {
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: I'm driving on I-10, about 50 miles out. Should arrive around 2 PM as scheduled.\n\n`);
-      }, 1000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: Great! What's your current location and is everything going smoothly with the load?\n\n`);
-      }, 4000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: I'm at mile marker 85 on I-10. Load is secure, truck is running fine, no issues.\n\n`);
-      }, 7000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: Perfect. Thanks for the update. Drive safely and remember to submit your proof of delivery. Contact us if anything changes!\n\n`);
-      }, 10000);
-    } 
-    
-    else if (scenarioType === 'delay') {
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: I'm running about 3 hours late due to heavy traffic and construction on I-10.\n\n`);
-      }, 1000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: I understand there's a delay. What's your current location and what's your new estimated arrival time?\n\n`);
-      }, 4000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: I'm stuck at mile marker 65, barely moving. Should arrive around 5 PM now instead of 2 PM.\n\n`);
-      }, 7000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: Got it. Is everything okay with the load and truck? Any other issues I should know about?\n\n`);
-      }, 10000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: Everything else is fine. Load is secure, just this traffic backup from the construction.\n\n`);
-      }, 13000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: Thanks for letting us know. I'll update the receiver about the delay. Drive safely!\n\n`);
-      }, 16000);
-    } 
-    
-    else if (scenarioType === 'emergency') {
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: Hey dispatch, I just had a blowout on I-10! I'm pulled over on the shoulder.\n\n`);
-      }, 1000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: I understand this is an emergency. Is everyone safe? Are there any injuries?\n\n`);
-      }, 3000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: Yeah, everyone's safe. No injuries. Just a tire blowout on the trailer.\n\n`);
-      }, 6000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: Thank God you're safe. What's your exact location? Please give me the highway, mile marker, or nearest exit.\n\n`);
-      }, 9000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: I'm on I-10 eastbound at mile marker 78, pulled over on the right shoulder.\n\n`);
-      }, 12000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: Got your location. Is the load secure? Do you need road service for the tire?\n\n`);
-      }, 15000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `Driver: Load is fine, straps are tight. Yeah, I'll need road service to change the tire.\n\n`);
-      }, 18000);
-
-      setTimeout(() => {
-        setTranscript(prev => prev + `AI: I have all the details. I'm connecting you to a human dispatcher right now who will coordinate road service. Stay on the line.\n\n`);
-      }, 21000);
-    }
-  };
-
-  const endCall = () => {
+  const endCall = async () => {
     try {
-      endRetellCall();
-    } catch (error) {
-      console.warn('Error ending call:', error);
-    } finally {
       setIsCallInProgress(false);
+      
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+      
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+
+      const callTranscript = transcript || '';
+      const summary = analyzeCallTranscript(callTranscript);
+
+      const callResult: CallResult = {
+        id: Date.now().toString(),
+        callRequest: callData,
+        transcript: callTranscript,
+        summary: summary,
+        timestamp: new Date().toISOString(),
+        duration: callDurationLocal
+      };
+
+      try {
+        const response = await fetch('/api/calls/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            callId: callResult.id,
+            duration: callDurationLocal,
+            transcript: callTranscript,
+            summary: summary
+          })
+        });
+        
+        if (!response.ok) {
+        }
+      } catch (saveError) {
+      }
+
+      onCallEnd(callResult);
+      
+    } catch (error) {
+    }
+  };
+
+  const analyzeCallTranscript = (transcript: string) => {
+    const lowerTranscript = transcript.toLowerCase();
+    
+    let call_outcome = 'completed';
+    let driver_status = 'checked_in';
+    let current_location = 'unknown';
+    let eta = 'unknown';
+    let delay_reason = '';
+    let unloading_status = 'in_progress';
+    
+    const emergencyKeywords = ['emergency', 'accident', 'help', 'stuck', 'breakdown', 'injured'];
+    const hasEmergency = emergencyKeywords.some(keyword => lowerTranscript.includes(keyword));
+    
+    if (hasEmergency) {
+      call_outcome = 'emergency';
+      driver_status = 'emergency';
     }
     
-    const generateSummary = (transcript: string) => {
-      const lowerTranscript = transcript.toLowerCase();
-      
-      if (lowerTranscript.includes('emergency') || lowerTranscript.includes('blowout') || 
-          lowerTranscript.includes('accident') || lowerTranscript.includes('breakdown')) {
-        return {
-          call_outcome: 'Emergency Escalation',
-          driver_status: 'Emergency',
-          current_location: extractFromTranscript(transcript, /mile marker \d+|i-\d+/i) || 'I-10 mile marker 78',
-          eta: 'Delayed due to emergency',
-          delay_reason: 'Emergency',
-          unloading_status: 'N/A',
-          pod_reminder_acknowledged: false,
-          emergency_type: lowerTranscript.includes('blowout') ? 'Breakdown' : 'Other',
-          safety_status: 'Driver confirmed everyone is safe',
-          injury_status: 'No injuries reported',
-          emergency_location: 'I-10 eastbound mile marker 78',
-          load_secure: true,
-          escalation_status: 'Connected to Human Dispatcher',
-        };
-      }
-      
-      else if (lowerTranscript.includes('late') || lowerTranscript.includes('delay') || 
-               lowerTranscript.includes('traffic') || lowerTranscript.includes('construction')) {
-        return {
-          call_outcome: 'In-Transit Update',
-          driver_status: 'Delayed',
-          current_location: extractFromTranscript(transcript, /mile marker \d+|i-\d+/i) || 'I-10 mile marker 65',
-          eta: extractFromTranscript(transcript, /\d{1,2}:\d{2}|\d+ pm|\d+ am/i) || '5:00 PM',
-          delay_reason: lowerTranscript.includes('traffic') ? 'Heavy Traffic' : 
-                       lowerTranscript.includes('construction') ? 'Heavy Traffic' : 'Other',
-          unloading_status: 'N/A',
-          pod_reminder_acknowledged: true,
-        };
-      }
-      
-      else if (lowerTranscript.includes('arrived') || lowerTranscript.includes('here') || 
-               lowerTranscript.includes('dock') || lowerTranscript.includes('unloading')) {
-        return {
-          call_outcome: 'Arrival Confirmation',
-          driver_status: 'Arrived',
-          current_location: 'At destination dock',
-          eta: 'Already arrived',
-          delay_reason: 'None',
-          unloading_status: lowerTranscript.includes('door') ? 'In Door' : 
-                           lowerTranscript.includes('waiting') ? 'Waiting for Lumper' : 'At Dock',
-          pod_reminder_acknowledged: true,
-        };
-      }
-      
-      else {
-        return {
-          call_outcome: 'In-Transit Update',
-          driver_status: 'Driving',
-          current_location: extractFromTranscript(transcript, /mile marker \d+|i-\d+/i) || 'I-10 mile marker 85',
-          eta: extractFromTranscript(transcript, /\d{1,2}:\d{2}|\d+ pm|\d+ am/i) || '2:00 PM',
-          delay_reason: 'None',
-          unloading_status: 'N/A',
-          pod_reminder_acknowledged: lowerTranscript.includes('pod') || lowerTranscript.includes('delivery'),
-        };
-      }
-    };
-
-    const extractFromTranscript = (text: string, regex: RegExp): string => {
-      const match = text.match(regex);
-      return match ? match[0] : '';
-    };
+    const delayKeywords = ['late', 'delay', 'traffic', 'behind schedule', 'running late'];
+    if (delayKeywords.some(keyword => lowerTranscript.includes(keyword))) {
+      delay_reason = 'traffic_delay';
+    }
     
-    const result: CallResult = {
-      id: `call_${Date.now()}`,
-      callRequest: callData,
-      transcript,
-      summary: generateSummary(transcript),
-      timestamp: new Date().toISOString(),
-      duration: callDuration > 0 ? callDuration : Math.floor((Date.now() - (Date.now() - 45000)) / 1000),
-    };
+    const locationMatch = transcript.match(/(?:at|near|on)\s+([A-Za-z0-9\s]+?)(?:\s|$|,|\.|;)/i);
+    if (locationMatch) {
+      current_location = locationMatch[1].trim();
+    }
     
-    onCallEnd(result);
+    return {
+      call_outcome,
+      driver_status,
+      current_location,
+      eta,
+      delay_reason,
+      unloading_status,
+      pod_reminder_acknowledged: false
+    };
   };
+
+  const handleToggleMute = () => {
+    setIsMuted(!isMuted);
+    if (recognitionRef.current) {
+      if (isMuted) {
+        recognitionRef.current.start();
+      } else {
+        recognitionRef.current.stop();
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Make Test Call</h2>
-        
-        {!isCallInProgress ? (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <button
+            onClick={onBack}
+            className="mb-4 text-blue-600 hover:text-blue-800 flex items-center gap-2"
+          >
+            ← Back to Dashboard
+          </button>
+          <h1 className="text-3xl font-bold text-gray-900">
+            PIPECAT Voice Agent - {agentConfig.name}
+          </h1>
+          <p className="text-gray-600 mt-2">
+            Real-time voice communication with live transcription
+          </p>
+        </div>
+
+        {/* Call Setup Form */}
+        {!isCallInProgress && !isConnected && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Start Call</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Driver Name *
+                  Driver Name
                 </label>
                 <input
                   type="text"
                   value={callData.driverName}
-                  onChange={(e) => setCallData({ ...callData, driverName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="e.g., Mike Johnson"
+                  onChange={(e) => setCallData({...callData, driverName: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter driver name"
                 />
-                <p className="text-xs text-gray-500 mt-1">Driver's first name or full name</p>
               </div>
-
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Load Number *
+                  Load Number
                 </label>
                 <input
                   type="text"
                   value={callData.loadNumber}
-                  onChange={(e) => setCallData({ ...callData, loadNumber: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="e.g., 7891-B, LB2024-001"
+                  onChange={(e) => setCallData({...callData, loadNumber: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter load number"
                 />
-                <p className="text-xs text-gray-500 mt-1">Load reference number for tracking</p>
               </div>
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number (Optional for Web Call)
-              </label>
-              <input
-                type="tel"
-                value={callData.phoneNumber}
-                onChange={(e) => setCallData({ ...callData, phoneNumber: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                placeholder="+1 (555) 123-4567"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Call Type
-              </label>
-              <select
-                value={callData.callType}
-                onChange={(e) => setCallData({ ...callData, callType: e.target.value as 'phone' | 'web' })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                <option value="web">Web Call (Browser)</option>
-                <option value="phone">Phone Call</option>
-              </select>
-              <p className="text-sm text-gray-500 mt-1">
-                {callData.callType === 'web' 
-                  ? 'Call will use your computer microphone and speakers' 
-                  : 'Call will be made to the provided phone number'
-                }
-              </p>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-medium text-blue-900 mb-3">Test Scenarios (for demonstration)</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => simulateScenario('normal')}
-                  className="px-3 py-2 text-sm bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-100 transition-colors"
-                >
-                  Normal Check-in
-                </button>
-                <button
-                  type="button"
-                  onClick={() => simulateScenario('delay')}
-                  className="px-3 py-2 text-sm bg-white border border-yellow-300 text-yellow-700 rounded hover:bg-yellow-100 transition-colors"
-                >
-                  Delay Scenario
-                </button>
-                <button
-                  type="button"
-                  onClick={() => simulateScenario('emergency')}
-                  className="px-3 py-2 text-sm bg-white border border-red-300 text-red-700 rounded hover:bg-red-100 transition-colors"
-                >
-                  Emergency Protocol
-                </button>
-              </div>
-              <p className="text-xs text-blue-600 mt-2">
-                Click a scenario button after starting the call to simulate different conversation flows
-              </p>
-            </div>
-
-            {retellError && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                <div className="flex">
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">Call Error</h3>
-                    <div className="mt-2 text-sm text-red-700">
-                      <p>{retellError}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end space-x-4 pt-4">
-              <button
-                onClick={onBack}
-                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Back to Config
-              </button>
-              
-              <button
-                onClick={startCall}
-                disabled={!callData.driverName || !callData.loadNumber}
-                className="flex items-center space-x-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                <Phone className="h-4 w-4" />
-                <span>Start {callData.callType === 'web' ? 'Web' : 'Phone'} Call</span>
-              </button>
-            </div>
+            
+            <Button
+              onClick={startCall}
+              disabled={!callData.driverName || !callData.loadNumber}
+              className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <Phone className="w-5 h-5" />
+              Start PIPECAT Call
+            </Button>
           </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="text-center py-8">
-              <div className={`inline-flex items-center justify-center w-16 h-16 ${isConnected ? 'bg-green-100' : 'bg-yellow-100'} rounded-full mb-4`}>
-                <Phone className={`h-8 w-8 ${isConnected ? 'text-green-600' : 'text-yellow-600'} ${!isConnected ? 'animate-pulse' : ''}`} />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                {isConnected ? 'Call Connected' : isLoading ? 'Connecting...' : 'Call in Progress'}
-              </h3>
-              <p className="text-gray-600 mb-4">
-                {isConnected 
-                  ? `Talking to ${callData.driverName} about load ${callData.loadNumber}`
-                  : `Setting up call with ${callData.driverName} for load ${callData.loadNumber}`
-                }
-              </p>
-              
-              {isConnected && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 inline-block">
-                  <div className="flex items-center space-x-2 text-green-700">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="font-mono text-lg font-semibold">
-                      {formatDuration(callDuration)}
-                    </span>
+        )}
+
+        {/* Active Call Interface */}
+        {isCallInProgress && (
+          <div className="bg-white rounded-lg shadow-md p-6">
+            {/* Call Status Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className={`w-4 h-4 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+                <span className="font-medium">
+                  {isConnected ? 'Connected' : 'Connecting...'}
+                </span>
+                {isListening && (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <Mic className="w-4 h-4 animate-pulse" />
+                    <span className="text-sm font-medium">Listening...</span>
                   </div>
-                  <p className="text-xs text-green-600 mt-1">Call Duration</p>
-                </div>
-              )}
+                )}
+              </div>
               
-              {!isConnected && isLoading && (
-                <div className="mt-4">
-                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-600"></div>
-                  <p className="text-sm text-gray-500 mt-2">Establishing connection...</p>
-                </div>
-              )}
+              <div className="flex items-center gap-4">
+                <span className="text-lg font-mono">
+                  {formatDuration(callDurationLocal)}
+                </span>
+                
+                <button
+                  onClick={handleToggleMute}
+                  className={`p-2 rounded-full ${isMuted ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                </button>
+                
+                <Button
+                  onClick={endCall}
+                  className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 flex items-center gap-2"
+                >
+                  <PhoneOff className="w-4 h-4" />
+                  End Call
+                </Button>
+              </div>
             </div>
 
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                disabled={!isConnected}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
-                  !isConnected
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : isMuted 
-                    ? 'bg-red-100 text-red-700 hover:bg-red-200' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                <span>{isMuted ? 'Unmute' : 'Mute'}</span>
-              </button>
-
-              <button
-                onClick={endCall}
-                className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                <PhoneOff className="h-4 w-4" />
-                <span>End Call</span>
-              </button>
+            {/* Volume Level Indicator */}
+            <div className="mb-4 flex items-center justify-center space-x-2">
+              <Volume2 className="w-4 h-4 text-gray-600" />
+              <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-green-500 transition-all duration-100"
+                  style={{ width: `${volumeLevel}%` }}
+                />
+              </div>
+              <span className="text-sm text-gray-600">{volumeLevel}%</span>
             </div>
 
-            {retellError && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            {/* Live Transcript */}
+            <div className="border rounded-lg p-4 mb-6">
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                Live Transcript
+                {isListening && <span className="text-green-600 text-sm">(🎤 Microphone Active)</span>}
+              </h3>
+              <div className="h-96 overflow-y-auto bg-gray-50 p-4 rounded border font-mono text-sm whitespace-pre-wrap">
+                {transcript && (
+                  <div className="space-y-2">
+                    <div className="text-gray-900">
+                      <span className="font-medium text-blue-600">Conversation:</span> {transcript}
+                    </div>
+                  </div>
+                )}
+                
+                {!transcript && (
+                  <div className="text-gray-500 text-center py-8">
+                    {isListening ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <LoadingSpinner size="sm" />
+                        <span>Waiting for speech...</span>
+                      </div>
+                    ) : (
+                      'Start speaking to see live transcript'
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Error Display */}
+            {pipecatError && (
+              <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
                 <div className="flex">
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-yellow-800">Connection Issue</h3>
+                    <h3 className="text-sm font-medium text-yellow-800">Voice Processing Issue</h3>
                     <div className="mt-2 text-sm text-yellow-700">
-                      <p>{retellError}</p>
-                      <p className="mt-1">The call is running in simulation mode for demonstration.</p>
+                      <p>{pipecatError}</p>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="font-medium text-gray-900">Live Transcript</h4>
-                <div className="flex items-center space-x-3">
-                  {isConnected && (
-                    <div className="text-xs text-gray-500 font-mono">
-                      {formatDuration(callDuration)}
-                    </div>
-                  )}
-                  <div className="flex items-center space-x-2">
-                    <div className={`w-2 h-2 rounded-full ${
-                      isConnected ? 'bg-green-500' : 
-                      isLoading ? 'bg-yellow-500 animate-pulse' : 'bg-gray-400'
-                    }`}></div>
-                    <span className="text-sm text-gray-600">
-                      {isConnected ? 'Connected' : isLoading ? 'Connecting...' : 'Disconnected'}
-                    </span>
-                  </div>
+            {/* Call Info Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-lg font-bold text-gray-900">{formatDuration(callDurationLocal)}</div>
+                <div className="text-sm text-gray-600">Duration</div>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-lg font-bold text-gray-900">
+                  {isConnected ? 'Connected' : 'Connecting'}
                 </div>
+                <div className="text-sm text-gray-600">Status</div>
               </div>
-              <div className="h-64 overflow-y-auto font-mono text-sm whitespace-pre-wrap">
-                {transcript || 'Conversation will appear here...'}
+              
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-lg font-bold text-gray-900">WEB</div>
+                <div className="text-sm text-gray-600">Call Type</div>
               </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-lg font-bold text-gray-900">
+                  {transcript ? transcript.split(' ').length : 0}
+                </div>
+                <div className="text-sm text-gray-600">Words</div>
+              </div>
+            </div>
+
+            {/* Test Scenarios */}
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+              <h4 className="font-medium text-blue-900 mb-3">Voice Interaction Guide</h4>
+              <ul className="text-sm text-blue-700 space-y-1">
+                <li>• <strong>Speak clearly</strong> into your microphone - the AI dispatcher will respond automatically</li>
+                <li>• <strong>Live transcription</strong> shows your conversation in real-time</li>
+                <li>• <strong>Voice recognition</strong> converts your speech to text instantly</li>
+                <li>• <strong>Real dispatcher behavior</strong> - professional, context-aware responses</li>
+              </ul>
             </div>
           </div>
         )}

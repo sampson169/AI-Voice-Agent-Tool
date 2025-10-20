@@ -25,7 +25,6 @@ async def create_agent_config(config: AgentConfigCreate):
             "updated_at": datetime.utcnow().isoformat()
         }
         
-        # Try to create Retell agent
         try:
             retell_agent = await retell_service.create_agent(config_data)
             if retell_agent:
@@ -124,7 +123,6 @@ async def create_agent_from_template(scenario_type: str, custom_name: str = None
             "updated_at": datetime.utcnow().isoformat()
         }
         
-        # Try to create Retell agent
         try:
             retell_agent = await retell_service.create_agent(config_data)
             if retell_agent:

@@ -4,21 +4,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.database.supabase import supabase_client
-from app.routes import agent_routes, call_routes, webhook_routes
+from app.routes import agent_routes, call_routes, webhook_routes, analytics_routes
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
-    print("🚀 Starting Voice Agent Tool...")
     connection_success = await supabase_client.test_connection()
-    if connection_success:
-        print("✅ Supabase connected successfully!")
-    else:
-        print("❌ Supabase connection failed - check your configuration")
+    
+    try:
+        from app.pipecat.pipecat_service import pipecat_service
+        pipecat_initialized = await pipecat_service.initialize(
+            openai_api_key=settings.openai_api_key,
+            cartesia_api_key=getattr(settings, 'cartesia_api_key', None),
+            deepgram_api_key=getattr(settings, 'deepgram_api_key', None)
+        )
+    except Exception as e:
+        pass
     
     yield  
-    print("👋 Shutting down Voice Agent Tool...")
+    
+    try:
+        from app.pipecat.pipecat_service import pipecat_service
+        await pipecat_service.shutdown()
+    except Exception as e:
+        pass
     
 
 app = FastAPI(
@@ -38,6 +48,7 @@ app.add_middleware(
 app.include_router(agent_routes.router)
 app.include_router(call_routes.router)
 app.include_router(webhook_routes.router)
+app.include_router(analytics_routes.router)
 
 @app.get("/")
 async def read_root():
@@ -50,11 +61,6 @@ async def read_root():
 @app.post("/")
 async def post_root(request: Request):
     """Handle POST requests to root (webhooks, health checks, etc.)"""
-    client_ip = request.client.host if request.client else "unknown"
-    user_agent = request.headers.get("user-agent", "unknown")
-    
-    print(f"🔔 POST request to root from {client_ip}, User-Agent: {user_agent}")
-    
     return {
         "message": "POST received at root endpoint",
         "status": "ok",
@@ -63,7 +69,6 @@ async def post_root(request: Request):
 
 
 if __name__ == "__main__":
-    print(f"🌐 Server starting on http://{settings.host}:{settings.port}")
     uvicorn.run(
         "main:app", 
         host=settings.host, 

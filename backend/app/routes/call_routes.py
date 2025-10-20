@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from app.models.schemas import CallRequest, CallResult
+from app.pipecat.pipecat_service import pipecat_service
 from app.services.retell_service import retell_service
 from app.database.supabase import supabase_client
 import uuid
+import logging
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/calls", tags=["calls"])
 
 @router.post("/web")
@@ -28,6 +31,7 @@ async def create_phone_call(call_request: CallRequest):
 @router.post("/start")
 async def start_call(call_request: CallRequest):
     try:
+        logger.info(f"Received call request: {call_request}")
         call_id = str(uuid.uuid4())
         
         from app.core.config import settings
@@ -51,27 +55,21 @@ async def start_call(call_request: CallRequest):
                     "updated_at": datetime.utcnow().isoformat()
                 }
                 await supabase_client.create_agent_config(default_agent)
-            
-            retell_agent_id = settings.retell_agent_id or 'agent_fa51b58953a177984c9e173910'
-        else:
-            retell_agent_id = settings.retell_agent_id or call_request.agent_id
         
-        original_agent_id = call_request.agent_id
-        call_request.agent_id = retell_agent_id
-        
+        logger.info(f"Creating PIPECAT call of type: {call_request.call_type}")
         if call_request.call_type == "phone":
-            retell_response = await retell_service.create_phone_call(call_request)
+            pipecat_response = await pipecat_service.create_phone_call(call_request)
         else:
-            retell_response = await retell_service.create_web_call(call_request)
+            pipecat_response = await pipecat_service.create_web_call(call_request)
         
-        call_request.agent_id = original_agent_id
+        logger.info(f"PIPECAT response: {pipecat_response}")
         
-        if retell_response and "error" not in retell_response:
-            retell_call_id = retell_response.get("call_id", call_id)
+        if pipecat_response and "error" not in pipecat_response:
+            pipecat_call_id = pipecat_response.get("call_id", call_id)
             
             call_data = {
                 "id": call_id,
-                "retell_call_id": retell_call_id,
+                "retell_call_id": pipecat_call_id,
                 "call_request": call_request.dict(),
                 "transcript": "",
                 "summary": {},
@@ -79,7 +77,9 @@ async def start_call(call_request: CallRequest):
                     "phase": "greeting",
                     "emergency_detected": False,
                     "clarification_attempts": 0,
-                    "scenario_type": "general"
+                    "scenario_type": getattr(call_request, 'scenario_type', 'general'),
+                    "pipecat_call": True,
+                    "analytics_enabled": True
                 },
                 "timestamp": datetime.utcnow().isoformat(),
                 "duration": 0
@@ -87,25 +87,82 @@ async def start_call(call_request: CallRequest):
             
             await supabase_client.create_call_result(call_data)
             
-            response = {
+            initial_metrics = {
                 "call_id": call_id,
-                "retell_call_id": retell_call_id,
-                "status": "initiated",
-                "web_call_link": retell_response.get("web_call_link"),
-                "access_token": retell_response.get("access_token")
+                "start_time": datetime.utcnow().isoformat(),
+                "duration_seconds": 0,
+                "total_tokens": 0,
+                "interruption_count": 0,
+                "outcome": "In Progress",
+                "emergency_detected": False
             }
             
+            await supabase_client.create_call_metrics(initial_metrics)
+            
+            response = {
+                "call_id": call_id,
+                "pipecat_call_id": pipecat_call_id,
+                "status": "initiated",
+                "web_call_link": pipecat_response.get("web_call_link"),
+                "access_token": pipecat_response.get("access_token"),
+                "phone_number": pipecat_response.get("phone_number")
+            }
+            
+            logger.info(f"Returning successful response: {response}")
             return response
         else:
-            error_msg = retell_response.get("error", "Unknown error") if retell_response else "Failed to create call"
-            error_details = retell_response.get("details", "") if retell_response else ""
-            full_error = f"{error_msg}. Details: {error_details}" if error_details else error_msg
-            raise HTTPException(status_code=500, detail=full_error)
+            error_msg = pipecat_response.get("error", "Unknown error") if pipecat_response else "Failed to create call"
+            logger.error(f"PIPECAT call creation failed: {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error starting call: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error starting call: {str(e)}")
+
+@router.post("/complete")
+async def complete_call(completion_data: dict):
+    """Complete a call and update its data"""
+    try:
+        call_id = completion_data.get("callId")
+        duration = completion_data.get("duration", 0)
+        transcript = completion_data.get("transcript", "")
+        summary = completion_data.get("summary", {})
+        
+        if not call_id:
+            raise HTTPException(status_code=400, detail="Call ID is required")
+        
+        updated_data = {
+            "duration": duration,
+            "transcript": transcript,
+            "summary": summary
+        }
+        
+        result = await supabase_client.update_call_result(call_id, updated_data)
+        
+        if result:
+            metrics_data = {
+                "call_id": call_id,
+                "end_time": datetime.utcnow().isoformat(),
+                "duration_seconds": duration,
+                "total_tokens": summary.get("tokens_used", 0),
+                "interruption_count": summary.get("interruptions", 0),
+                "outcome": summary.get("call_outcome", "Unknown"),
+                "emergency_detected": summary.get("emergency_type") is not None
+            }
+            
+            await supabase_client.create_call_metrics(metrics_data)
+            
+            return {"status": "success", "call_id": call_id}
+        else:
+            raise HTTPException(status_code=404, detail="Call not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing call: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error completing call: {str(e)}")
 
 @router.get("/{call_id}/result", response_model=CallResult)
 async def get_call_result(call_id: str):

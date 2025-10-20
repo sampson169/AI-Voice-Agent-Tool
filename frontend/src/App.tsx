@@ -3,6 +3,7 @@ import Dashboard from './components/Dashboard';
 import AgentConfiguration from './components/AgentConfiguration';
 import CallInterface from './components/CallInterface';
 import CallResults from './components/CallResults';
+import AnalyticsDashboard from './components/analytics/AnalyticsDashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import type { AppView, AgentConfig, CallResult } from './types';
 
@@ -45,6 +46,10 @@ function App() {
               onNewCall={() => setCurrentView('call')}
               onBackToConfig={() => setCurrentView('config')}
             />
+          )}
+          
+          {currentView === 'analytics' && (
+            <AnalyticsDashboard />
           )}
         </ErrorBoundary>
       </div>

@@ -1,8 +1,17 @@
+"""
+DEPRECATED: Retell AI Service
+This module is being phased out as part of the PIPECAT migration.
+Use app.pipecat.pipecat_service instead.
+"""
+
 import httpx
 import json
 from app.core.config import settings
 from typing import Dict, Any, Optional
 from app.models.schemas import CallRequest
+import warnings
+
+
 
 class RetellService:
     def __init__(self):
