@@ -22,7 +22,45 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         pass
     
+    # Initialize monitoring integration
+    try:
+        from app.pipecat.monitoring_integration import initialize_monitoring
+        await initialize_monitoring()
+    except Exception as e:
+        print(f"Warning: Failed to initialize monitoring: {e}")
+    
+    # Initialize smart call routing
+    try:
+        from app.pipecat.smart_call_router import initialize_smart_router
+        await initialize_smart_router()
+    except Exception as e:
+        print(f"Warning: Failed to initialize smart router: {e}")
+    
+    # Initialize conversation analyzer
+    try:
+        from app.pipecat.conversation_analyzer import initialize_conversation_analyzer
+        await initialize_conversation_analyzer()
+    except Exception as e:
+        print(f"Warning: Failed to initialize conversation analyzer: {e}")
+    
+    # Initialize sentiment analyzer
+    try:
+        from app.pipecat.driver_sentiment_analyzer import initialize_sentiment_analyzer
+        await initialize_sentiment_analyzer()
+    except Exception as e:
+        print(f"Warning: Failed to initialize sentiment analyzer: {e}")
+    
     yield  
+    
+    # Shutdown monitoring
+    try:
+        from app.pipecat.monitoring_integration import shutdown_monitoring
+        await shutdown_monitoring()
+    except Exception as e:
+        pass
+    
+    # Note: Smart router, conversation analyzer, and sentiment analyzer
+    # don't require explicit shutdown as they're stateless services
     
     try:
         from app.pipecat.pipecat_service import pipecat_service
