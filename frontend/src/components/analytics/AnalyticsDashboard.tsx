@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, TrendingUp, Calendar } from 'lucide-react';
+import { RefreshCw, TrendingUp, Calendar, Activity, Monitor } from 'lucide-react';
 import AnalyticsMetrics from './AnalyticsMetrics';
 import CallOutcomeChart from './CallOutcomeChart';
 import AnalyticsTrendsChart from './AnalyticsTrendsChart';
+import LiveCallMonitor from './LiveCallMonitor';
+import AdvancedAnalyticsDashboard from './AdvancedAnalyticsDashboard';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import config from '../../utils/config';
 
@@ -41,6 +43,7 @@ const AnalyticsDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(30);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'live' | 'advanced'>('overview');
 
   const fetchAnalyticsData = async (days: number = 30) => {
     try {
@@ -155,78 +158,110 @@ const AnalyticsDashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Navigation Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {[
+            { key: 'overview', label: 'Overview', icon: TrendingUp },
+            { key: 'live', label: 'Live Monitor', icon: Activity },
+            { key: 'advanced', label: 'Advanced Analytics', icon: Monitor }
+          ].map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key as any)}
+              className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === key
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Icon className="h-4 w-4 mr-2" />
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
       {/* Last Updated */}
-      {lastUpdated && (
+      {lastUpdated && activeTab === 'overview' && (
         <p className="text-sm text-gray-500">
           Last updated: {lastUpdated.toLocaleString()}
         </p>
       )}
 
-      {/* Metrics Cards */}
-      {metrics && <AnalyticsMetrics metrics={metrics} />}
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Metrics Cards */}
+          {metrics && <AnalyticsMetrics metrics={metrics} />}
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Call Outcomes Chart */}
-        <CallOutcomeChart data={outcomes} />
-        
-        {/* Analytics Trends Chart */}
-        <div className="lg:col-span-2">
-          <AnalyticsTrendsChart data={trends} />
-        </div>
-      </div>
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Call Outcomes Chart */}
+            <CallOutcomeChart data={outcomes} />
+            
+            {/* Analytics Trends Chart */}
+            <div className="lg:col-span-2">
+              <AnalyticsTrendsChart data={trends} />
+            </div>
+          </div>
 
-      {/* Additional Analytics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h4 className="text-lg font-semibold text-gray-900 mb-2">Interruption Rate</h4>
-          <p className="text-3xl font-bold text-yellow-600">
-            {metrics && metrics.total_calls > 0 
-              ? `${Math.round((metrics.total_interruptions / metrics.total_calls) * 100)}%`
-              : '0%'
-            }
-          </p>
-          <p className="text-sm text-gray-600 mt-1">
-            {metrics?.total_interruptions || 0} total interruptions
-          </p>
-        </div>
+          {/* Additional Analytics Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">Interruption Rate</h4>
+              <p className="text-3xl font-bold text-yellow-600">
+                {metrics && metrics.total_calls > 0 
+                  ? `${Math.round((metrics.total_interruptions / metrics.total_calls) * 100)}%`
+                  : '0%'
+                }
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                {metrics?.total_interruptions || 0} total interruptions
+              </p>
+            </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h4 className="text-lg font-semibold text-gray-900 mb-2">Emergency Rate</h4>
-          <p className="text-3xl font-bold text-red-600">
-            {metrics && metrics.total_calls > 0 
-              ? `${Math.round((metrics.emergency_calls / metrics.total_calls) * 100)}%`
-              : '0%'
-            }
-          </p>
-          <p className="text-sm text-gray-600 mt-1">
-            {metrics?.emergency_calls || 0} emergency calls
-          </p>
-        </div>
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">Emergency Rate</h4>
+              <p className="text-3xl font-bold text-red-600">
+                {metrics && metrics.total_calls > 0 
+                  ? `${Math.round((metrics.emergency_calls / metrics.total_calls) * 100)}%`
+                  : '0%'
+                }
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                {metrics?.emergency_calls || 0} emergency calls
+              </p>
+            </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h4 className="text-lg font-semibold text-gray-900 mb-2">Token Efficiency</h4>
-          <p className="text-3xl font-bold text-purple-600">
-            {metrics?.avg_tokens_per_call?.toFixed(0) || '0'}
-          </p>
-          <p className="text-sm text-gray-600 mt-1">
-            avg tokens per call
-          </p>
-        </div>
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">Token Efficiency</h4>
+              <p className="text-3xl font-bold text-purple-600">
+                {metrics?.avg_tokens_per_call?.toFixed(0) || '0'}
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                avg tokens per call
+              </p>
+            </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h4 className="text-lg font-semibold text-gray-900 mb-2">Call Quality</h4>
-          <p className="text-3xl font-bold text-green-600">
-            {metrics && metrics.total_calls > 0 
-              ? `${Math.round((metrics.successful_calls / metrics.total_calls) * 100)}%`
-              : '0%'
-            }
-          </p>
-          <p className="text-sm text-gray-600 mt-1">
-            successful calls
-          </p>
-        </div>
-      </div>
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">Call Quality</h4>
+              <p className="text-3xl font-bold text-green-600">
+                {metrics && metrics.total_calls > 0 
+                  ? `${Math.round((metrics.successful_calls / metrics.total_calls) * 100)}%`
+                  : '0%'
+                }
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                successful calls
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'live' && <LiveCallMonitor />}
+      {activeTab === 'advanced' && <AdvancedAnalyticsDashboard />}
     </div>
   );
 };
